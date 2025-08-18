@@ -18,6 +18,10 @@ app.add_middleware(
 def health():
     return {"ok": True}
 
+@app.get("/")
+def root():
+    return {"service": "flowagent-v3", "status": "ok", "docs": "/docs"}
+
 # ---------- Types ----------
 Mode = Literal["AE", "SDR"]
 Level = Literal["Beginner", "Intermediate", "Advanced"]
