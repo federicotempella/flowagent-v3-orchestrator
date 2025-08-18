@@ -22,48 +22,32 @@ def root_banner():
     app_ver  = os.getenv("APP_VERSION", "1.1.0")
     build_sha = os.getenv("BUILD_SHA", "render")
     app_env  = os.getenv("APP_ENV", "production")
-    docs_on = os.getenv("DOCS_ENABLED", "true").lower() in ("1","true","yes","on")
     docs_url = "/docs" if docs_on else "/openapi.json"
 
     html = f"""
     <!doctype html>
-    <html>
-    <head>
-      <meta charset="utf-8" />
-      <meta name="viewport" content="width=device-width,initial-scale=1" />
-      <title>{app_name}</title>
-      <style>
-        body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; 
-               margin:0; background:#0b1020; color:#e6e8ef; }}
-        .wrap {{ max-width:820px; margin:6rem auto; padding:2rem; text-align:center; }}
-        .card {{ background:#121936; border:1px solid #222a51; border-radius:14px; padding:2rem; }}
-        h1 {{ margin:0 0 1rem; font-size:1.8rem; }}
-        .meta {{ opacity:.8; margin:.5rem 0 1.2rem; }}
-        .btns a {{ display:inline-block; margin:.25rem; padding:.7rem 1rem; 
-                   border-radius:10px; text-decoration:none; border:1px solid #3b4799; }}
-        .btns a.primary {{ background:#2b3bbb; color:white; border-color:#2b3bbb; }}
-        .btns a:hover {{ filter:brightness(1.08); }}
-        code {{ background:#0f1430; padding:.25rem .5rem; border-radius:6px; }}
-      </style>
-    </head>
-    <body>
-      <div class="wrap">
-        <div class="card">
-          <h1>{app_name}</h1>
-          <div class="meta">
-            <div>Env: <code>{app_env}</code> · Versione: <code>{app_ver}</code> · Build: <code>{build_sha[:7]}</code></div>
-          </div>
-          <div class="btns">
-            <a class="primary" href="{docs_url}">📚 API Docs</a>
-            <a href="/openapi.json">🧩 OpenAPI</a>
-            <a href="/health">✅ Health</a>
-          </div>
-        </div>
-      </div>
-    </body>
-    </html>
+    <html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <title>{app_name}</title>
+    <style>body{{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:#0b1020;color:#e6e8ef}}
+    .wrap{{max-width:820px;margin:6rem auto;padding:2rem;text-align:center}}
+    .card{{background:#121936;border:1px solid #222a51;border-radius:14px;padding:2rem}}
+    h1{{margin:0 0 1rem;font-size:1.8rem}}
+    .meta{{opacity:.8;margin:.5rem 0 1.2rem}}
+    .btns a{{display:inline-block;margin:.25rem;padding:.7rem 1rem;border-radius:10px;text-decoration:none;border:1px solid #3b4799}}
+    .btns a.primary{{background:#2b3bbb;color:white;border-color:#2b3bbb}}
+    .btns a:hover{{filter:brightness(1.08)}}</style></head>
+    <body><div class="wrap"><div class="card">
+    <h1>{app_name}</h1>
+    <div class="meta">Env: <code>{app_env}</code> · Versione: <code>{app_ver}</code> · Build: <code>{build_sha[:7]}</code></div>
+    <div class="btns"><a class="primary" href="{docs_url}">📚 API Docs</a>
+    <a href="/openapi.json">🧩 OpenAPI</a> <a href="/health">✅ Health</a></div>
+    </div></div></body></html>
     """
     return HTMLResponse(html)
+
+    @app.get("/ping", include_in_schema=False)
+    def ping(): 
+        return {"service":"flowagent-v3","status":"ok","docs":"/docs"}
 
 app.add_middleware(
     CORSMiddleware,
