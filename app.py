@@ -16,10 +16,6 @@ app = FastAPI(
     openapi_url="/openapi.json",
 )
 
-@app.get("/")
-def root():
-    return {"service": "flowagent-v3", "status": "ok", "docs": "/docs"}
-
 @app.get("/", include_in_schema=False)
 def root_banner():
     app_name = "Flowagent V3 Orchestrator"
