@@ -1,10 +1,23 @@
+import os
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Literal
 from datetime import datetime, date
 
-app = FastAPI(title="Flowagent V3 Orchestrator", version="1.1.0")
+DOCS_ENABLED = os.getenv("DOCS_ENABLED", "true").lower() in ("1", "true", "yes", "on")
+
+app = FastAPI(
+    title="Flowagent V3 Orchestrator",
+    version="1.1.0",
+    openapi_url="/openapi.json",
+    docs_url="/docs" if DOCS_ENABLED else None,
+    redoc_url="/redoc" if DOCS_ENABLED else None,
+)
+
+@app.get("/")
+def root():
+    return {"service": "flowagent-v3", "status": "ok", "docs": "/docs"}
 
 app.add_middleware(
     CORSMiddleware,
@@ -17,10 +30,6 @@ app.add_middleware(
 @app.get("/health")
 def health():
     return {"ok": True}
-
-@app.get("/")
-def root():
-    return {"service": "flowagent-v3", "status": "ok", "docs": "/docs"}
 
 # ---------- Types ----------
 Mode = Literal["AE", "SDR"]
