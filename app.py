@@ -6,14 +6,14 @@ from typing import List, Optional, Literal
 from datetime import datetime, date
 from fastapi.responses import HTMLResponse
 
-DOCS_ENABLED = os.getenv("DOCS_ENABLED", "true").lower() in ("1", "true", "yes", "on")
+docs_on = os.getenv("DOCS_ENABLED", "true").lower() in ("1","true","yes","on")
 
 app = FastAPI(
     title="Flowagent V3 Orchestrator",
     version="1.1.0",
+    docs_url="/docs" if docs_on else None,   
+    redoc_url=None,
     openapi_url="/openapi.json",
-    docs_url="/docs" if DOCS_ENABLED else None,
-    redoc_url="/redoc" if DOCS_ENABLED else None,
 )
 
 @app.get("/")
@@ -22,12 +22,12 @@ def root():
 
 @app.get("/", include_in_schema=False)
 def root_banner():
-    docs_on = os.getenv("DOCS_ENABLED", "true").lower() in ("1","true","yes","on")
-    docs_url = "/docs" if docs_on else "/openapi.json"
     app_name = "Flowagent V3 Orchestrator"
     app_ver  = os.getenv("APP_VERSION", "1.1.0")
-    build_sha = os.getenv("BUILD_SHA", "local")
+    build_sha = os.getenv("BUILD_SHA", "render")
     app_env  = os.getenv("APP_ENV", "production")
+    docs_on = os.getenv("DOCS_ENABLED", "true").lower() in ("1","true","yes","on")
+    docs_url = "/docs" if docs_on else "/openapi.json"
 
     html = f"""
     <!doctype html>
