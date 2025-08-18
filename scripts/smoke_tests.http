@@ -1,0 +1,36 @@
+### Generate assets
+POST http://localhost:8080/run/generate_assets
+Authorization: Bearer your_orchestrator_secret
+Content-Type: application/json
+
+{
+  "mode":"AE","level":"Advanced","language":"it","persona_id":"fashion_cio",
+  "frameworks":["ShowMeYouKnowMe","TIPPS+COI"],
+  "compose_strategy":{"order":["ShowMeYouKnowMe","TIPPS+COI"],"apply_cleanup":true},
+  "use_assets":["subject","hook","value_prop","proof","cta"],
+  "research":{"enabled":true,"approval_mode":"manual","time_window_days":60}
+}
+
+### Generate sequence
+POST http://localhost:8080/run/generate_sequence
+Authorization: Bearer your_orchestrator_secret
+Content-Type: application/json
+
+{
+  "sequence_type":"with_inmail","language":"it","tone":"formale",
+  "frameworks":["ShowMeYouKnowMe","TIPPS+COI","NEAT_structure"],
+  "compose_strategy":{"order":["ShowMeYouKnowMe","TIPPS+COI","NEAT_structure"],"apply_cleanup":true},
+  "ab_test":{"video_dm":true,"voice_note":true,"text_dm":true},
+  "calendar_rules":{"no_weekend":true},
+  "buyer_persona_ids":["fashion_cio"],
+  "contacts":[{"name":"Laura Rossi","role":"CIO","company":"Danfoss","lang":"it"}],
+  "triggers":{"manual_priority":true,"competitor":["BIP","Accenture"],"erp":["SAP"]},
+  "research":{"enabled":true,"approval_mode":"auto","time_window_days":90}
+}
+
+### Company evidence upsert
+POST http://localhost:8080/company/evidence/upsert
+Authorization: Bearer your_orchestrator_secret
+Content-Type: application/json
+
+{"company_id":"danfoss","erp":["SAP"],"competitor":["BIP"],"source":"job_ad"}

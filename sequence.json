@@ -1,0 +1,107 @@
+﻿{
+    "messages":  [
+                     {
+                         "channel":  "email",
+                         "step":  "1",
+                         "variant":  "A",
+                         "subject":  "EDI/API: evitare carichi extra per lâIT",
+                         "text":  "Oggetto: Onboarding EDI senza carichi extra\n\nBuongiorno {Nome},\nho notato segnali di upgrade EDI; spesso lâimpatto Ã¨ su ticket e tempi di integrazione.\nIn un caso retail simile abbiamo ridotto i ticket -35% e il lead time -50% in 90 giorni.\nSe utile, posso condividere la check-list in 12 minuti â le va bene mercoledÃ¬?\n",
+                         "tips":  null
+                     },
+                     {
+                         "channel":  "linkedin_dm",
+                         "step":  "2",
+                         "variant":  "A",
+                         "subject":  null,
+                         "text":  "Spunto rapido su EDI/API â se utile scambiamo 10â questa settimana per capire fit e tempi.",
+                         "tips":  [
+                                      "Tenere sotto 240 caratteri",
+                                      "CTA soft - proposta tempo breve"
+                                  ]
+                     },
+                     {
+                         "channel":  "inmail",
+                         "step":  "3",
+                         "variant":  "A",
+                         "subject":  "Idea per ridurre ticket EDI del 35%",
+                         "text":  "Teaser 1-sentence: Ha senso valutare un check rapido sul flusso EDI?",
+                         "tips":  null
+                     }
+                 ],
+    "coi":  {
+                "status":  "estimated",
+                "note":  "Ritardi EDI 3â5% â rischio â¬25â40k/anno",
+                "assumptions":  [
+                                    "Volumi simili a case retail",
+                                    "Ticket medio â¬20-30"
+                                ]
+            },
+    "sequence_next":  [
+                          {
+                              "day":  5,
+                              "action":  "InMail bump"
+                          },
+                          {
+                              "day":  7,
+                              "action":  "Follow-up Poke"
+                          }
+                      ],
+    "calendar":  [
+                     {
+                         "date":  "2025-08-18",
+                         "action":  "Email Step 1",
+                         "no_weekend_respected":  true
+                     }
+                 ],
+    "labels":  [
+                   "CompanyEvidence: SAP",
+                   "Poke-AB"
+               ],
+    "what_i_used":  {
+                        "personas":  [
+                                         "fashion_cio"
+                                     ],
+                        "files":  [
+                                      "Case studies CPG - Retail.docx",
+                                      "PR: upgrade EDI Q4"
+                                  ],
+                        "triggers":  [
+                                         "ERP:SAP"
+                                     ]
+                    },
+    "rationale":  "Frameworks compositi; ricerca inline applicata",
+    "logging":  {
+                    "prompt_version":  "v3.1.0",
+                    "kb_snapshot":  "auto"
+                },
+    "research":  {
+                     "triggers":  {
+                                      "erp":  [
+                                                  "SAP"
+                                              ],
+                                      "company_signal":  "Hiring EDI Specialist"
+                                  },
+                     "facts":  [
+                                   {
+                                       "fact":  "Upgrade EDI pianificato nel Q4",
+                                       "confidence":  0.82,
+                                       "citations":  [
+                                                         {
+                                                             "url":  "https://newsroom.example.com/pr-edi-upgrade",
+                                                             "title":  "PR: upgrade EDI Q4",
+                                                             "published_at":  null,
+                                                             "source":  "newsroom"
+                                                         }
+                                                     ]
+                                   }
+                               ],
+                     "citations":  [
+                                       {
+                                           "url":  "https://newsroom.example.com/pr-edi-upgrade",
+                                           "title":  "PR: upgrade EDI Q4",
+                                           "published_at":  null,
+                                           "source":  "newsroom"
+                                       }
+                                   ]
+                 }
+}

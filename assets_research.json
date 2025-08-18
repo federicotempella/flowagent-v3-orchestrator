@@ -1,0 +1,64 @@
+﻿{
+    "assets":  [
+                   {
+                       "type":  "subject",
+                       "text":  "EDI/API senza carichi extra per lâIT â idea veloce?",
+                       "lang":  "it",
+                       "source_refs":  [
+                                           "Buyer persona - fashion retail.docx",
+                                           "TIPPS framework + The 1-Sentence Email_framework example.docx"
+                                       ]
+                   },
+                   {
+                       "type":  "hook",
+                       "text":  "Ho visto che state spingendo sullâupgrade EDI; spesso il collo di bottiglia Ã¨ lâonboarding partner.",
+                       "lang":  "it",
+                       "source_refs":  [
+                                           "Buyer persona - fashion retail.docx",
+                                           "TIPPS framework + The 1-Sentence Email_framework example.docx"
+                                       ]
+                   },
+                   {
+                       "type":  "value_prop",
+                       "text":  "Riduci il tempo medio di integrazione partner da settimane a giorni con connettori pre-validati.",
+                       "lang":  "it",
+                       "source_refs":  [
+                                           "Buyer persona - fashion retail.docx",
+                                           "TIPPS framework + The 1-Sentence Email_framework example.docx"
+                                       ]
+                   },
+                   {
+                       "type":  "proof",
+                       "text":  "Caso retail: -35% ticket EDI e lead time onboarding -50% in 90 giorni.",
+                       "lang":  "it",
+                       "source_refs":  [
+                                           "Buyer persona - fashion retail.docx",
+                                           "TIPPS framework + The 1-Sentence Email_framework example.docx"
+                                       ]
+                   },
+                   {
+                       "type":  "cta",
+                       "text":  "Ha senso uno scambio di 12â questa settimana per capire fit e tempi?",
+                       "lang":  "it",
+                       "source_refs":  [
+                                           "Buyer persona - fashion retail.docx",
+                                           "TIPPS framework + The 1-Sentence Email_framework example.docx"
+                                       ]
+                   }
+               ],
+    "what_i_used":  {
+                        "personas":  [
+                                         "fashion_cio"
+                                     ],
+                        "files":  [
+                                      "TIPPS framework + The 1-Sentence Email_framework example.docx",
+                                      "PR: upgrade EDI Q4"
+                                  ],
+                        "triggers":  null
+                    },
+    "rationale":  "Generazione TIPPS con pre-hook personalizzato; ricerca inline applicata",
+    "logging":  {
+                    "prompt_version":  "v3.1.0",
+                    "kb_snapshot":  "auto"
+                }
+}

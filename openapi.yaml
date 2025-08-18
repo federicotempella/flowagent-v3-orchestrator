@@ -1,0 +1,630 @@
+openapi: 3.1.0
+info:
+  title: Flowagent V3 Orchestrator API
+  version: "1.1.0"
+  description: >
+    API per usare il modello V3 come AI agent orchestrato (RAG+LLM).
+    Copre librerie (L1/L2/L3), generazione asset/sequenze, ranking, compliance,
+    calendario (no weekend & signals), knowledge base, A/B management, export, invio & tracking.
+servers:
+  - url: http://localhost:8080
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema: { type: string, maxLength: 64 }
+      description: UUID per rendere idempotente la richiesta.
+    XEnv:
+      name: X-Env
+      in: header
+      required: false
+      schema: { type: string, enum: [test, prod], default: test }
+      description: Seleziona ambiente logico (test|prod).
+  schemas:
+    Mode: { type: string, enum: [AE, SDR] }
+    Level: { type: string, enum: [Beginner, Intermediate, Advanced] }
+    SequenceType: { type: string, enum: [with_inmail, without_inmail] }
+    Framework: { type: string, enum: [Auto, TIPPS, TIPPS+COI, Poke, HarrisNEAT, NEAT_structure, ShowMeYouKnowMe, BoldInsight, Challenger] }
+    Channel: { type: string, enum: [email, linkedin_dm, inmail, voice_note, video_dm] }
+    Trigger:
+      type: object
+      properties:
+        manual_priority: { type: boolean, default: false }
+        personal: { type: string, nullable: true }
+        competitor: { type: array, items: { type: string } }
+        erp: { type: array, items: { type: string } }
+        company_signal: { type: string, nullable: true }
+        linkedin_signal: { type: string, nullable: true }
+        read_inferred: { type: string, nullable: true }
+      additionalProperties: false
+    Contact:
+      type: object
+      required: [name, role, company]
+      properties:
+        name: { type: string }
+        role: { type: string }
+        company: { type: string }
+        lang: { type: string, default: it }
+        email: { type: string, format: email, nullable: true }
+        company_id: { type: string, nullable: true }
+    CalendarRules:
+      type: object
+      properties:
+        no_weekend: { type: boolean, default: true }
+        holiday_calendar: { type: string, nullable: true }
+        working_hours:
+          type: object
+          properties:
+            start: { type: string, pattern: "^[0-2][0-9]:[0-5][0-9]$" }
+            end: { type: string, pattern: "^[0-2][0-9]:[0-5][0-9]$" }
+    Message:
+      type: object
+      required: [channel, step, variant, text]
+      properties:
+        channel: { $ref: '#/components/schemas/Channel' }
+        step: { type: string, pattern: "^[0-9]+$" }
+        variant: { type: string, enum: [A, B, C] }
+        subject: { type: string, nullable: true }
+        text: { type: string }
+        tips: { type: array, items: { type: string } }
+    COI:
+      type: object
+      properties:
+        status: { type: string, enum: [none, estimated, computed], default: none }
+        note: { type: string }
+        assumptions: { type: array, items: { type: string } }
+    SequenceAction:
+      type: object
+      properties:
+        day: { type: integer }
+        action: { type: string }
+    CalendarEvent:
+      type: object
+      properties:
+        date: { type: string, format: date }
+        action: { type: string }
+        no_weekend_respected: { type: boolean }
+    WhatIUsed:
+      type: object
+      properties:
+        personas: { type: array, items: { type: string } }
+        files: { type: array, items: { type: string } }
+        triggers: { type: array, items: { type: string } }
+    Citation:
+      type: object
+      properties:
+        url: { type: string }
+        title: { type: string }
+        published_at: { type: string, format: date-time, nullable: true }
+        source: { type: string }
+    EnrichedFact:
+      type: object
+      properties:
+        fact: { type: string }
+        confidence: { type: number }
+        citations:
+          type: array
+          items: { $ref: '#/components/schemas/Citation' }
+    ResearchResult:
+      type: object
+      properties:
+        triggers:
+          type: object
+          properties:
+            personal: { type: string, nullable: true }
+            competitor: { type: array, items: { type: string } }
+            erp: { type: array, items: { type: string } }
+            company_signal: { type: string, nullable: true }
+        facts:
+          type: array
+          items: { $ref: '#/components/schemas/EnrichedFact' }
+        citations:
+          type: array
+          items: { $ref: '#/components/schemas/Citation' }
+    StandardOutput:
+      type: object
+      properties:
+        messages: { type: array, items: { $ref: '#/components/schemas/Message' } }
+        coi: { $ref: '#/components/schemas/COI' }
+        sequence_next: { type: array, items: { $ref: '#/components/schemas/SequenceAction' } }
+        calendar: { type: array, items: { $ref: '#/components/schemas/CalendarEvent' } }
+        labels: { type: array, items: { type: string } }
+        what_i_used: { $ref: '#/components/schemas/WhatIUsed' }
+        rationale: { type: string }
+        logging:
+          type: object
+          properties:
+            user_id: { type: string }
+            session_id: { type: string }
+            step: { type: string }
+            prompt_version: { type: string }
+            kb_snapshot: { type: string }
+        research: { $ref: '#/components/schemas/ResearchResult' }
+    ComposeStrategy:
+      type: object
+      properties:
+        order: { type: array, items: { type: string } }
+        apply_cleanup: { type: boolean, default: true }
+    ResearchParams:
+      type: object
+      properties:
+        enabled: { type: boolean, default: false }
+        approval_mode: { type: string, enum: [auto, manual], default: manual }
+        time_window_days: { type: integer, default: 90 }
+        language: { type: string, default: it }
+        geo: { type: string, nullable: true }
+        types:
+          type: array
+          items:
+            type: string
+            enum: [news, press_release, careers, techstack, finance, blog]
+        domains_whitelist: { type: array, items: { type: string } }
+        max_results: { type: integer, default: 12 }
+    GenerateAssetsRequest:
+      type: object
+      required: [mode, level, language, persona_id]
+      properties:
+        mode: { $ref: '#/components/schemas/Mode' }
+        level: { $ref: '#/components/schemas/Level' }
+        language: { type: string, default: it }
+        tone: { type: string, default: formale }
+        persona_id: { type: string }
+        pain_id: { type: string, nullable: true }
+        symptom_id: { type: string, nullable: true }
+        kpi_id: { type: string, nullable: true }
+        framework_override: { $ref: '#/components/schemas/Framework' }
+        frameworks: { type: array, items: { $ref: '#/components/schemas/Framework' } }
+        compose_strategy: { $ref: '#/components/schemas/ComposeStrategy' }
+        triggers: { $ref: '#/components/schemas/Trigger' }
+        kb_snapshot: { type: string, nullable: true }
+        use_assets:
+          type: array
+          items:
+            type: string
+            enum: [subject, hook, value_prop, proof, cta, objection_handler, ps]
+        research: { $ref: '#/components/schemas/ResearchParams' }
+    GenerateAssetsResponse:
+      type: object
+      properties:
+        assets:
+          type: array
+          items:
+            type: object
+            properties:
+              type: { type: string }
+              text: { type: string }
+              lang: { type: string }
+              source_refs: { type: array, items: { type: string } }
+        what_i_used: { $ref: '#/components/schemas/WhatIUsed' }
+        rationale: { type: string }
+        logging:
+          type: object
+          properties:
+            prompt_version: { type: string }
+            kb_snapshot: { type: string }
+    GenerateSequenceRequest:
+      type: object
+      required: [sequence_type, language, tone]
+      properties:
+        sequence_type: { $ref: '#/components/schemas/SequenceType' }
+        language: { type: string, default: it }
+        tone: { type: string, default: formale }
+        mode: { $ref: '#/components/schemas/Mode' }
+        level: { $ref: '#/components/schemas/Level' }
+        framework_override: { $ref: '#/components/schemas/Framework' }
+        frameworks: { type: array, items: { $ref: '#/components/schemas/Framework' } }
+        compose_strategy: { $ref: '#/components/schemas/ComposeStrategy' }
+        use_assets: { type: array, items: { type: string } }
+        ab_test:
+          type: object
+          properties:
+            video_dm: { type: boolean, default: false }
+            voice_note: { type: boolean, default: false }
+            text_dm: { type: boolean, default: true }
+        calendar_rules: { $ref: '#/components/schemas/CalendarRules' }
+        contacts: { type: array, items: { $ref: '#/components/schemas/Contact' } }
+        triggers: { $ref: '#/components/schemas/Trigger' }
+        buyer_persona_ids: { type: array, items: { type: string } }
+        research: { $ref: '#/components/schemas/ResearchParams' }
+    RankRequest:
+      type: object
+      required: [objective, items]
+      properties:
+        objective: { type: string, enum: [reply_rate, open_rate, clarity], default: reply_rate }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              channel: { $ref: '#/components/schemas/Channel' }
+              subject: { type: string, nullable: true }
+              text: { type: string }
+    RankResponse:
+      type: object
+      properties:
+        ranked:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              score: { type: number }
+              reason: { type: string }
+    ComplianceRequest:
+      type: object
+      required: [text]
+      properties:
+        text: { type: string }
+        rules:
+          type: object
+          properties:
+            anti_jargon: { type: boolean, default: true }
+            require_cta: { type: boolean, default: true }
+            mobile_first: { type: boolean, default: true }
+            relevance_over_brevity: { type: boolean, default: true }
+            max_words: { type: integer, nullable: true }
+            banned_terms: { type: array, items: { type: string } }
+            forbidden_phrases: { type: array, items: { type: string } }
+            required_elements: { type: array, items: { type: string } }
+    ComplianceResponse:
+      type: object
+      properties:
+        pass: { type: boolean }
+        violations:
+          type: array
+          items:
+            type: object
+            properties:
+              code: { type: string }
+              detail: { type: string }
+              position: { type: integer, nullable: true }
+    CalendarBuildRequest:
+      type: object
+      properties:
+        start_date: { type: string, format: date }
+        rules: { $ref: '#/components/schemas/CalendarRules' }
+        base_sequence: { type: array, items: { $ref: '#/components/schemas/SequenceAction' } }
+        signals:
+          type: array
+          items:
+            type: string
+            enum: [open, soft_reply, profile_view, site_visit]
+    CalendarBuildResponse:
+      type: object
+      properties:
+        calendar: { type: array, items: { $ref: '#/components/schemas/CalendarEvent' } }
+        ics: { type: string, description: ICS inlined (base64 o testo) }
+    KBIngestRequest:
+      type: object
+      required: [content_type]
+      properties:
+        content_type: { type: string, enum: [docx, pdf, html, md, txt, url] }
+        url: { type: string, format: uri, nullable: true }
+        content_base64: { type: string, nullable: true }
+        metadata:
+          type: object
+          properties:
+            industry: { type: string }
+            role: { type: string }
+            level: { $ref: '#/components/schemas/Level' }
+            language: { type: string }
+            source_file: { type: string }
+            tags: { type: array, items: { type: string } }
+    KBIngestResponse:
+      type: object
+      properties:
+        doc_id: { type: string }
+        chunks: { type: integer }
+    KBSearchResponse:
+      type: object
+      properties:
+        matches:
+          type: array
+          items:
+            type: object
+            properties:
+              doc_id: { type: string }
+              score: { type: number }
+              chunk: { type: string }
+              metadata: { type: object }
+    KBListResponse:
+      type: object
+      properties:
+        docs:
+          type: array
+          items:
+            type: object
+            properties:
+              doc_id: { type: string }
+              title: { type: string }
+              industry: { type: string }
+              role: { type: string }
+              lang: { type: string }
+              tags: { type: array, items: { type: string } }
+    CompanyEvidence:
+      type: object
+      required: [company_id]
+      properties:
+        company_id: { type: string }
+        erp: { type: array, items: { type: string } }
+        competitor: { type: array, items: { type: string } }
+        tools: { type: array, items: { type: string } }
+        source: { type: string }
+    ManualSignal:
+      type: object
+      properties:
+        contact_id: { type: string, nullable: true }
+        company_id: { type: string, nullable: true }
+        type: { type: string, enum: [profile_view, site_visit, manual_note] }
+        meta: { type: object }
+    COIEstimateRequest:
+      type: object
+      properties:
+        volume: { type: integer }
+        error_rate: { type: number }
+        avg_order_value: { type: number }
+        process_costs: { type: number }
+        assumptions: { type: object }
+    COIEstimateResponse:
+      type: object
+      properties:
+        status: { type: string, enum: [estimated, computed] }
+        note: { type: string }
+        assumptions: { type: array, items: { type: string } }
+    SendEmailRequest:
+      type: object
+      required: [provider, to, subject, text]
+      properties:
+        provider: { type: string, enum: [sendgrid, mailgun, smtp, gmail, outlook] }
+        to: { type: string, format: email }
+        from: { type: string, format: email }
+        subject: { type: string }
+        text: { type: string }
+        html: { type: string, nullable: true }
+        variant_id: { type: string, nullable: true }
+        campaign_id: { type: string, nullable: true }
+    SendEmailResponse:
+      type: object
+      properties:
+        message_id: { type: string }
+        provider: { type: string }
+        queued_at: { type: string, format: date-time }
+    WebhookEvent:
+      type: object
+      required: [provider, event_type, message_id, timestamp]
+      properties:
+        provider: { type: string }
+        event_type: { type: string, enum: [delivered, open, click, reply, bounce] }
+        message_id: { type: string }
+        email: { type: string, format: email, nullable: true }
+        timestamp: { type: string, format: date-time }
+        metadata:
+          type: object
+          properties:
+            variant_id: { type: string }
+            campaign_id: { type: string }
+    Problem:
+      type: object
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        trace_id: { type: string }
+paths:
+  /run/generate_assets:
+    post:
+      summary: Generate Level-2 assets
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKey' }, { $ref: '#/components/parameters/XEnv' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenerateAssetsRequest' }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/GenerateAssetsResponse' } } } }
+  /run/generate_sequence:
+    post:
+      summary: Generate Level-3 sequence & variants
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKey' }, { $ref: '#/components/parameters/XEnv' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenerateSequenceRequest' }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/StandardOutput' } } } }
+  /run/rank:
+    post:
+      summary: Rank messages/snippets with reason
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RankRequest' }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/RankResponse' } } } }
+  /validate/compliance:
+    post:
+      summary: Anti-jargon / CTA / mobile-first / brand rules
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ComplianceRequest' }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ComplianceResponse' } } } }
+  /calendar/build:
+    post:
+      summary: Compose calendar (no weekend) & add calls only on signals
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CalendarBuildRequest' }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/CalendarBuildResponse' } } } }
+  /kb/ingest:
+    post:
+      summary: Ingest a document into KB (RAG)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/KBIngestRequest' }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/KBIngestResponse' } } } }
+  /kb/search:
+    get:
+      summary: Search KB (RAG)
+      parameters:
+        - in: query
+          name: q
+          required: true
+          schema: { type: string }
+        - in: query
+          name: industry
+          schema: { type: string }
+        - in: query
+          name: role
+          schema: { type: string }
+        - in: query
+          name: lang
+          schema: { type: string }
+        - in: query
+          name: top_k
+          schema: { type: integer, default: 5 }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/KBSearchResponse' } } } }
+  /kb/list:
+    get:
+      summary: List KB docs (metadati)
+      parameters:
+        - in: query
+          name: industry
+          schema: { type: string }
+        - in: query
+          name: role
+          schema: { type: string }
+        - in: query
+          name: lang
+          schema: { type: string }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/KBListResponse' } } } }
+  /kb/doc/{doc_id}:
+    delete:
+      summary: Delete a KB document
+      parameters:
+        - in: path
+          name: doc_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Deleted }
+  /company/evidence/upsert:
+    post:
+      summary: Upsert company-wide evidence (ERP/competitor/tools)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CompanyEvidence' }
+      responses:
+        "200": { description: OK }
+  /company/evidence/{company_id}:
+    get:
+      summary: Get company-wide evidence
+      parameters:
+        - in: path
+          name: company_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/CompanyEvidence' } } } }
+  /signals/record:
+    post:
+      summary: Record non-email signals (profile_view/site_visit/manual_note)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ManualSignal' }
+      responses:
+        "200": { description: OK }
+  /coi/estimate:
+    post:
+      summary: Stand-alone COI calculator
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/COIEstimateRequest' }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/COIEstimateResponse' } } } }
+  /ab/promote:
+    post:
+      summary: Promote winning variant for a sequence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sequence_id, variant_id]
+              properties:
+                sequence_id: { type: string }
+                variant_id: { type: string }
+      responses:
+        "200": { description: OK }
+  /export/sequence/{sequence_id}:
+    get:
+      summary: Export sequence
+      parameters:
+        - in: path
+          name: sequence_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: format
+          schema: { type: string, enum: [csv, json], default: json }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sequence_id: { type: string }
+                  format: { type: string }
+                  url: { type: string }
+  /send/email:
+    post:
+      summary: (Optional) Send email via provider
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SendEmailRequest' }
+      responses:
+        "200": { description: Queued, content: { application/json: { schema: { $ref: '#/components/schemas/SendEmailResponse' } } } }
+  /webhooks/events:
+    post:
+      summary: (Optional) ESP inbound events
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WebhookEvent' }
+      responses:
+        "200": { description: OK }
