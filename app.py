@@ -229,6 +229,25 @@ class CalendarBuildResponse(BaseModel):
     calendar: List[CalendarEvent]
     ics: Optional[str] = None
 
+# --- KB typed responses ---
+class KBSearchMatch(BaseModel):
+    doc_id: str
+    score: float
+    chunk: str
+    metadata: Optional[dict] = None
+
+class KBSearchResponse(BaseModel):
+    matches: List[KBSearchMatch]
+
+class KBListItem(BaseModel):
+    doc_id: str
+    title: Optional[str] = None
+    lang: Optional[str] = None
+    metadata: Optional[dict] = None
+
+class KBListResponse(BaseModel):
+    docs: List[KBListItem]
+
 class KBIngestRequest(BaseModel):
     content_type: Literal["docx","pdf","html","md","txt","url"]
     url: Optional[str] = None
@@ -283,6 +302,23 @@ class COIEstimateResponse(BaseModel):
 def ensure_auth(auth_header: str | None):
     if not auth_header or not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Unauthorized")
+
+# --- Approval gate (bypassabile in TEST, richiede conferma in PROD) ---
+APPROVAL_HEADER = "X-Connector-Approved"  # atteso: "true"/"yes"/"1"
+
+def approval_gate(consequential: bool, x_env: str | None, approved: str | None):
+    """
+    Se la rotta è 'consequenziale' e siamo in PROD, richiede conferma esplicita
+    via header X-Connector-Approved. In TEST non blocca.
+    """
+    env = (x_env or "test").lower()
+    if consequential and env == "prod":
+        if (approved or "").lower() not in ("true", "yes", "1"):
+            # 428 = Precondition Required (chiara come semantica di "serve approvazione")
+            raise HTTPException(
+                status_code=428,
+                detail={"message": "The requested action requires approval", "consequential": True}
+            )
 
 def _inline_research(company: Optional[str], req: Optional[ResearchParams]) -> Optional[ResearchResult]:
     if not req or not req.enabled:
@@ -403,24 +439,54 @@ def calendar_build(payload: CalendarBuildRequest, authorization: Optional[str] =
     return CalendarBuildResponse(calendar=cal, ics=ics)
 
 @app.post("/kb/ingest", response_model=KBIngestResponse)
-def kb_ingest(payload: KBIngestRequest, authorization: Optional[str] = Header(None)):
+def kb_ingest(
+    payload: KBIngestRequest,
+    authorization: Optional[str] = Header(None),
+    x_env: Optional[str] = Header(default="test", alias="X-Env"),
+    approved: Optional[str] = Header(default=None, alias=APPROVAL_HEADER),
+):
     ensure_auth(authorization)
+    # Gate di approvazione: in PROD richiede header X-Connector-Approved:true
+    approval_gate(True, x_env, approved)
+
     # Stub: in un secondo momento integra parser e indice dalla cartella kb/index
     return KBIngestResponse(doc_id="doc_123", chunks=42)
 
-@app.get("/kb/search")
-def kb_search(q: str, industry: Optional[str] = None, role: Optional[str] = None, lang: Optional[str] = None, top_k: int = 5, authorization: Optional[str] = Header(None)):
+@app.get("/kb/search", response_model=KBSearchResponse)
+def kb_search(
+    q: str,
+    industry: Optional[str] = None,
+    role: Optional[str] = None,
+    lang: Optional[str] = None,
+    top_k: int = 5,
+    authorization: Optional[str] = Header(None),
+):
     ensure_auth(authorization)
-    return {
-        "matches": [
-            {"doc_id":"doc_123","score":0.82,"chunk":"...TIPPS framework...","metadata":{"industry":industry,"role":role,"lang":lang}}
-        ]
-    }
+    return KBSearchResponse(matches=[
+        KBSearchMatch(
+            doc_id="doc_123",
+            score=0.82,
+            chunk="...TIPPS framework...",
+            metadata={"industry": industry, "role": role, "lang": lang}
+        )
+    ])
 
-@app.get("/kb/list")
-def kb_list(industry: Optional[str] = None, role: Optional[str] = None, lang: Optional[str] = None, authorization: Optional[str] = Header(None)):
+@app.get("/kb/list", response_model=KBListResponse)
+def kb_list(
+    industry: Optional[str] = None,
+    role: Optional[str] = None,
+    lang: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
+):
     ensure_auth(authorization)
-    return {"docs":[{"doc_id":"doc_123","title":"Buyer persona - fashion retail.docx","industry":"retail","role":"CIO","lang":"it","tags":["persona"]}]}
+    return KBListResponse(docs=[
+        KBListItem(
+            doc_id="doc_123",
+            title="Buyer persona - fashion retail.docx",
+            lang="it",
+            metadata={"industry":"retail","role":"CIO","tags":["persona"]}
+        )
+    ])
 
 @app.delete("/kb/doc/{doc_id}")
 def kb_delete(doc_id: str, authorization: Optional[str] = Header(None)):
@@ -428,8 +494,14 @@ def kb_delete(doc_id: str, authorization: Optional[str] = Header(None)):
     return {"deleted": doc_id}
 
 @app.post("/company/evidence/upsert")
-def company_evidence_upsert(payload: CompanyEvidence, authorization: Optional[str] = Header(None)):
+def company_evidence_upsert(
+    payload: CompanyEvidence,
+    authorization: Optional[str] = Header(None),
+    x_env: Optional[str] = Header(default="test", alias="X-Env"),
+    approved: Optional[str] = Header(default=None, alias=APPROVAL_HEADER),
+):
     ensure_auth(authorization)
+    approval_gate(True, x_env, approved)
     labels = []
     for e in (payload.erp or []):
         labels.append(f"CompanyEvidence: {e}")
@@ -441,8 +513,14 @@ def company_evidence_get(company_id: str, authorization: Optional[str] = Header(
     return CompanyEvidence(company_id=company_id, erp=["SAP"], competitor=["BIP"], tools=[])
 
 @app.post("/signals/record")
-def record_signal(payload: ManualSignal, authorization: Optional[str] = Header(None)):
+def record_signal(
+    payload: ManualSignal,
+    authorization: Optional[str] = Header(None),
+    x_env: Optional[str] = Header(default="test", alias="X-Env"),
+    approved: Optional[str] = Header(default=None, alias=APPROVAL_HEADER),
+):
     ensure_auth(authorization)
+    approval_gate(consequential=True, x_env=x_env, approved=approved)
     return {"ok": True, "stored": payload.dict()}
 
 @app.post("/coi/estimate", response_model=COIEstimateResponse)
@@ -455,8 +533,14 @@ class ABPromoteRequest(BaseModel):
     variant_id: str
 
 @app.post("/ab/promote")
-def ab_promote(payload: ABPromoteRequest, authorization: Optional[str] = Header(None)):
+def ab_promote(
+    payload: ABPromoteRequest,
+    authorization: Optional[str] = Header(None),
+    x_env: Optional[str] = Header(default="test", alias="X-Env"),
+    approved: Optional[str] = Header(default=None, alias=APPROVAL_HEADER),
+):
     ensure_auth(authorization)
+    approval_gate(True, x_env, approved)
     return {"ok": True, "sequence_id": payload.sequence_id, "variant_id": payload.variant_id}
 
 @app.get("/export/sequence/{sequence_id}")
@@ -465,10 +549,19 @@ def export_sequence(sequence_id: str, format: Literal["csv","json"]="json", auth
     return {"sequence_id": sequence_id, "format": format, "url": f"https://download.example.com/{sequence_id}.{format}"}
 
 @app.post("/send/email", response_model=SendEmailResponse)
-def send_email(payload: SendEmailRequest, authorization: Optional[str] = Header(None)):
+def send_email(
+    payload: SendEmailRequest,
+    authorization: Optional[str] = Header(None),
+    x_env: Optional[str] = Header(default="test", alias="X-Env"),
+    approved: Optional[str] = Header(default=None, alias=APPROVAL_HEADER),
+):
     ensure_auth(authorization)
+    approval_gate(True, x_env, approved)
     return SendEmailResponse(message_id="msg_abc123", provider=payload.provider, queued_at=datetime.utcnow())
 
 @app.post("/webhooks/events")
-def webhooks(payload: dict):
+def webhooks(payload: dict, x_webhook_token: Optional[str] = Header(None, alias="X-Webhook-Token")):
+    if x_webhook_token != os.getenv("WEBHOOK_TOKEN", "changeme"):
+        raise HTTPException(status_code=401, detail="Unauthorized webhook")
     return {"ok": True}
+
