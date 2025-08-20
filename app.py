@@ -56,23 +56,27 @@ def ping():
     return {"service":"flowagent-v3","status":"ok","docs":"/docs"}
 
 # PRIMA di app.add_middleware
-ALLOWED_ORIGINS = os.getenv(
+# .env: ALLOW_ORIGINS=https://chatgpt.com,https://chat.openai.com,https://flowagent-v3-orchestrator.onrender.com
+raw_origins = os.getenv(
     "ALLOW_ORIGINS",
-    "https://chatgpt.com,https://flowagent-v3-orchestrator.onrender.com"
-).split(",")
+    "https://chatgpt.com,https://chat.openai.com,https://flowagent-v3-orchestrator.onrender.com"
+)
+
+ALLOWED_ORIGINS = [o.strip() for o in raw_origins.split(",") if o.strip()]
+
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in ALLOWED_ORIGINS],
-    allow_credentials=True, # se usi credenziali/cookie serve un origin esplicito (no "*")
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,            # richiede che NON ci sia "*"
     allow_methods=["*"],
-    allow_headers=["*"],  # include Authorization, X-Connector-Approved, ecc.
+    allow_headers=["*"],               # include Authorization, X-Connector-Approved
     expose_headers=["X-Connector-Approved"],
 )
 
 @app.get("/health")
 def health():
-    return {"ok": True, "time": datetime.utcnow().isoformat()}
+    return {"ok": True, "time": datetime.utcnow().isoformat()+ "Z"}
 
 # ---------- Types ----------
 Mode = Literal["AE", "SDR"]
@@ -324,7 +328,6 @@ def ensure_auth(auth_header: str | None):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 # --- Approval gate (bypassabile in TEST, richiede conferma in PROD) ---
-APPROVAL_HEADER = "X-Connector-Approved"  # atteso: "true"/"yes"/"1"
 
 def approval_gate(consequential: bool, approved: str | None):
     """
@@ -528,7 +531,6 @@ def kb_list(
 def kb_delete(
     doc_id: str,
     authorization: Optional[str] = Header(None),
-    x_env: Optional[str] = Header(default=None, alias="X-Env"),
     approved: Optional[str] = Header(default=None, alias=APPROVAL_HEADER),
 ):
     ensure_auth(authorization)
