@@ -3,7 +3,7 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Literal
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from fastapi.responses import HTMLResponse
 from dotenv import load_dotenv
 load_dotenv()
@@ -480,16 +480,12 @@ def calendar_build(payload: CalendarBuildRequest, authorization: Optional[str] =
 def kb_ingest(
     payload: KBIngestRequest,
     authorization: Optional[str] = Header(None),
-    x_env: Optional[str] = Header(default=None, alias="X-Env"),
     approved: Optional[str] = Header(default=None, alias=APPROVAL_HEADER),
 ):
     ensure_auth(authorization)
     approval_gate(True, approved)
 
     # TODO: integrazione reale parser/indice
-    return KBIngestResponse(doc_id="doc_123", chunks=42)
-
-    # Stub: in un secondo momento integra parser e indice dalla cartella kb/index
     return KBIngestResponse(doc_id="doc_123", chunks=42)
 
 @app.get("/kb/search", response_model=KBSearchResponse)
@@ -556,8 +552,11 @@ def company_evidence_upsert(
     return {"ok": True, "stored": stored}
 
 @app.get("/company/evidence/{company_id}", response_model=CompanyEvidence)
-def company_evidence_get(company_id: str):
-    # TODO: fetch reale
+def company_evidence_get(
+    company_id: str,
+    authorization: Optional[str] = Header(None),
+):
+    ensure_auth(authorization)
     return CompanyEvidence(company_id=company_id, erp=["SAP"], competitor=["X"], tools=["Y"])
 
 @app.post("/signals/record")
@@ -595,15 +594,18 @@ def ab_promote(
     approval_gate(True, approved)
     
     data = payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
-    return {"ok": "promoted": data}
+    return {"ok": True, "promoted": data}
 
 @app.get("/export/sequence/{sequence_id}")
-def export_sequence(sequence_id: str, format: str = "json"):
-    # TODO: export reale
+def export_sequence(
+    sequence_id: str,
+    format: str = "json",
+    authorization: Optional[str] = Header(None),
+):
+    ensure_auth(authorization)
     if format == "csv":
         return {"ok": True, "format": "csv", "sequence_id": sequence_id}
     return {"ok": True, "format": "json", "sequence_id": sequence_id}
-
 @app.post("/send/email", response_model=SendEmailResponse)
 def send_email(
     payload: SendEmailRequest,
@@ -613,20 +615,17 @@ def send_email(
     ensure_auth(authorization)
     approval_gate(True, approved)
 
-    # TODO: integrazione provider reale
-    msg_id = f"msg_{int(datetime.now().timestamp())}"
-    queued = datetime.now(timezone.utc).isoformat()
-
-    return SendEmailResponse(
-        message_id=msg_id,
-        provider=payload.provider,
-        queued_at=queued,
-    )
+    msg_id = f"msg_{int(datetime.now(timezone.utc).timestamp())}"
+    queued = datetime.now(timezone.utc)
+    return SendEmailResponse(message_id=msg_id, provider=payload.provider, queued_at=queued)
 
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
 
-@app.post("/webhooks/events")
-def webhooks(payload: dict, x_webhook_token: Optional[str] = Header(None, alias="X-Webhook-Secret"),):
+@app.post("/webhooks/events", include_in_schema=False)
+def webhooks (
+    payload: dict, 
+    x_webhook_secret: Optional[str] = Header(None, alias="X-Webhook-Secret"),
+):
     if not WEBHOOK_SECRET or x_webhook_secret != WEBHOOK_SECRET:
         raise HTTPException(status_code=403, detail="Invalid webhook secret")
 
