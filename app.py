@@ -45,16 +45,22 @@ def root_banner():
     """
     return HTMLResponse(html)
 
-    @app.get("/ping", include_in_schema=False)
-    def ping(): 
-        return {"service":"flowagent-v3","status":"ok","docs":"/docs"}
+@app.get("/ping", include_in_schema=False)
+def ping(): 
+    return {"service":"flowagent-v3","status":"ok","docs":"/docs"}
+
+# PRIMA di app.add_middleware
+ALLOWED_ORIGINS = os.getenv(
+    "CORS_ALLOW_ORIGINS",
+    "https://chatgpt.com,https://flowagent-v3-orchestrator.onrender.com"
+).split(",")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=[o.strip() for o in ALLOWED_ORIGINS],
     allow_credentials=True,
-    allow_methods=["*"], 
-    allow_headers=["*"]
+    allow_methods=["*"],
+    allow_headers=["*"],  # lascia pure "*": includerà Authorization, X-Env, X-Connector-Approved
 )
 
 @app.get("/health")
@@ -311,7 +317,7 @@ def approval_gate(consequential: bool, x_env: str | None, approved: str | None):
     Se la rotta è 'consequenziale' e siamo in PROD, richiede conferma esplicita
     via header X-Connector-Approved. In TEST non blocca.
     """
-    env = (x_env or "test").lower()
+    env = (x_env or os.getenv("APP_ENV", "test")).lower()
     if consequential and env == "prod":
         if (approved or "").lower() not in ("true", "yes", "1"):
             # 428 = Precondition Required (chiara come semantica di "serve approvazione")
@@ -428,7 +434,7 @@ def compliance(payload: ComplianceRequest, authorization: Optional[str] = Header
         if words > int(rules["max_words"]):
             violations.append({"code":"TOO_LONG","detail":f"Testo {words} parole > max {rules['max_words']}"})
 
-    return ComplianceResponse(**{"pass": len(violations)==0, "violations": violations})
+    return ComplianceResponse(pass_=len(violations)==0, violations=violations)
 
 @app.post("/calendar/build", response_model=CalendarBuildResponse)
 def calendar_build(payload: CalendarBuildRequest, authorization: Optional[str] = Header(None)):
@@ -489,8 +495,14 @@ def kb_list(
     ])
 
 @app.delete("/kb/doc/{doc_id}")
-def kb_delete(doc_id: str, authorization: Optional[str] = Header(None)):
+def kb_delete(
+    doc_id: str,
+    authorization: Optional[str] = Header(None),
+    x_env: Optional[str] = Header(default="test", alias="X-Env"),
+    approved: Optional[str] = Header(default=None, alias=APPROVAL_HEADER),
+):
     ensure_auth(authorization)
+    approval_gate(True, x_env, approved)  # ← aggiunto
     return {"deleted": doc_id}
 
 @app.post("/company/evidence/upsert")
