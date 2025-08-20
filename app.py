@@ -151,7 +151,7 @@ class StandardOutput(BaseModel):
     research: Optional[ResearchResult] = None
 
 class ComposeStrategy(BaseModel):
-    order: List[str] = []
+    order: list[str] = Field(default_factory=list)
     apply_cleanup: bool = True
 
 class ResearchParams(BaseModel):
@@ -223,13 +223,13 @@ class ComplianceRequest(BaseModel):
 
 class ComplianceResponse(BaseModel):
     pass_: bool = Field(..., alias="pass")
-    violations: List[dict] = []
+    violations: list[dict] = Field(default_factory=list)
 
 class CalendarBuildRequest(BaseModel):
-    start_date: Optional[date] = None
-    rules: Optional[CalendarRules] = CalendarRules()
-    base_sequence: Optional[List[SequenceAction]] = None
-    signals: Optional[List[Literal["open","soft_reply","profile_view","site_visit"]]] = None
+    start_date: date | None = None
+    rules: CalendarRules = Field(default_factory=CalendarRules)          # sempre presente
+    base_sequence: list[SequenceAction] = Field(default_factory=list)    # [] se assente
+    signals: list[Literal["open","soft_reply","profile_view","site_visit"]] = Field(default_factory=list)
 
 class CalendarBuildResponse(BaseModel):
     calendar: List[CalendarEvent]
@@ -302,7 +302,7 @@ class COIEstimateRequest(BaseModel):
 class COIEstimateResponse(BaseModel):
     status: Literal["estimated","computed"]
     note: str
-    assumptions: List[str] = []
+    assumptions: list[str] = Field(default_factory=list)
 
 # ---------- Helpers ----------
 def ensure_auth(auth_header: str | None):
