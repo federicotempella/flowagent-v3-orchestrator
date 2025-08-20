@@ -5,6 +5,12 @@ from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Literal
 from datetime import datetime, date
 from fastapi.responses import HTMLResponse
+from dotenv import load_dotenv
+load_dotenv()
+
+
+APP_ENV = os.getenv("APP_ENV", "test").lower()
+APPROVAL_HEADER = "X-Connector-Approved"
 
 docs_on = os.getenv("DOCS_ENABLED", "true").lower() in ("1","true","yes","on")
 
@@ -21,7 +27,7 @@ def root_banner():
     app_name = "Flowagent V3 Orchestrator"
     app_ver  = os.getenv("APP_VERSION", "1.1.0")
     build_sha = os.getenv("BUILD_SHA", "render")
-    app_env  = os.getenv("APP_ENV", "production")
+    app_env  = APP_ENV
     docs_url = "/docs" if docs_on else "/openapi.json"
 
     html = f"""
@@ -51,21 +57,22 @@ def ping():
 
 # PRIMA di app.add_middleware
 ALLOWED_ORIGINS = os.getenv(
-    "CORS_ALLOW_ORIGINS",
+    "ALLOW_ORIGINS",
     "https://chatgpt.com,https://flowagent-v3-orchestrator.onrender.com"
 ).split(",")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in ALLOWED_ORIGINS],
-    allow_credentials=True,
+    allow_credentials=True, # se usi credenziali/cookie serve un origin esplicito (no "*")
     allow_methods=["*"],
-    allow_headers=["*"],  # lascia pure "*": includerà Authorization, X-Env, X-Connector-Approved
+    allow_headers=["*"],  # include Authorization, X-Connector-Approved, ecc.
+    expose_headers=["X-Connector-Approved"],
 )
 
 @app.get("/health")
 def health():
-    return {"ok": True}
+    return {"ok": True, "time": datetime.utcnow().isoformat()}
 
 # ---------- Types ----------
 Mode = Literal["AE", "SDR"]
@@ -198,7 +205,7 @@ class GenerateSequenceRequest(BaseModel):
     compose_strategy: Optional[ComposeStrategy] = None
     use_assets: Optional[List[str]] = None
     ab_test: Optional[dict] = None
-    calendar_rules: Optional[CalendarRules] = CalendarRules()
+    calendar_rules: Optional[CalendarRules] = Field(default_factory=CalendarRules)
     contacts: Optional[List[Contact]] = None
     triggers: Optional[Trigger] = None
     buyer_persona_ids: Optional[List[str]] = None
@@ -224,6 +231,9 @@ class ComplianceRequest(BaseModel):
 class ComplianceResponse(BaseModel):
     pass_: bool = Field(..., alias="pass")
     violations: list[dict] = Field(default_factory=list)
+
+    class Config:
+        allow_population_by_field_name = True
 
 class CalendarBuildRequest(BaseModel):
     start_date: date | None = None
@@ -308,22 +318,36 @@ class COIEstimateResponse(BaseModel):
 def ensure_auth(auth_header: str | None):
     if not auth_header or not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Unauthorized")
+    expected = os.getenv("BEARER_TOKEN", "")
+    token = auth_header[len("Bearer "):].strip()
+    if expected and token != expected:
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
 # --- Approval gate (bypassabile in TEST, richiede conferma in PROD) ---
 APPROVAL_HEADER = "X-Connector-Approved"  # atteso: "true"/"yes"/"1"
 
-def approval_gate(consequential: bool, x_env: str | None, approved: str | None):
+def approval_gate(consequential: bool, approved: str | None):
     """
-    Se la rotta è 'consequenziale' e siamo in PROD, richiede conferma esplicita
-    via header X-Connector-Approved. In TEST non blocca.
+     Se l'azione è 'consequenziale' e l'ambiente è prod/production,
+    richiede conferma esplicita via header X-Connector-Approved.
+    In altri ambienti (test/dev/staging) non blocca.
     """
-    env = (x_env or os.getenv("APP_ENV", "test")).lower()
-    if consequential and env == "prod":
-        if (approved or "").lower() not in ("true", "yes", "1"):
-            # 428 = Precondition Required (chiara come semantica di "serve approvazione")
+    if not consequential:
+        return
+
+    is_prod = APP_ENV in ("prod", "production")
+    if is_prod:
+        val = (approved or "").strip().lower()
+        if val not in ("true", "yes", "1", "on"):
+            # 428 = Precondition Required
             raise HTTPException(
                 status_code=428,
-                detail={"message": "The requested action requires approval", "consequential": True}
+                detail={
+                    "message": "The requested action requires approval",
+                    "consequential": True,
+                    "env": APP_ENV,
+                    "hint": f"Send header {APPROVAL_HEADER}: true to proceed."
+                }
             )
 
 def _inline_research(company: Optional[str], req: Optional[ResearchParams]) -> Optional[ResearchResult]:
@@ -336,7 +360,11 @@ def _inline_research(company: Optional[str], req: Optional[ResearchParams]) -> O
 
 # ---------- Endpoints ----------
 @app.post("/run/generate_assets", response_model=GenerateAssetsResponse)
-def generate_assets(payload: GenerateAssetsRequest, authorization: Optional[str] = Header(None), x_env: Optional[str] = Header(default="test", alias="X-Env"), idemp: Optional[str] = Header(default=None, alias="Idempotency-Key")):
+def generate_assets(
+    payload: GenerateAssetsRequest,
+    authorization: Optional[str] = Header(None),
+    idemp: Optional[str] = Header(default=None, alias="Idempotency-Key"),
+):
     ensure_auth(authorization)
     rr = _inline_research(company=None, req=payload.research)
     assets = []
@@ -368,7 +396,11 @@ def generate_assets(payload: GenerateAssetsRequest, authorization: Optional[str]
     )
 
 @app.post("/run/generate_sequence", response_model=StandardOutput)
-def generate_sequence(payload: GenerateSequenceRequest, authorization: Optional[str] = Header(None), x_env: Optional[str] = Header(default="test", alias="X-Env"), idemp: Optional[str] = Header(default=None, alias="Idempotency-Key")):
+def generate_sequence(
+    payload: GenerateSequenceRequest,
+    authorization: Optional[str] = Header(None),
+    idemp: Optional[str] = Header(default=None, alias="Idempotency-Key"),
+):
     ensure_auth(authorization)
     company = payload.contacts[0].company if payload.contacts else None
     rr = _inline_research(company=company, req=payload.research)
@@ -448,12 +480,14 @@ def calendar_build(payload: CalendarBuildRequest, authorization: Optional[str] =
 def kb_ingest(
     payload: KBIngestRequest,
     authorization: Optional[str] = Header(None),
-    x_env: Optional[str] = Header(default="test", alias="X-Env"),
+    x_env: Optional[str] = Header(default=None, alias="X-Env"),
     approved: Optional[str] = Header(default=None, alias=APPROVAL_HEADER),
 ):
     ensure_auth(authorization)
-    # Gate di approvazione: in PROD richiede header X-Connector-Approved:true
-    approval_gate(True, x_env, approved)
+    approval_gate(True, approved)
+
+    # TODO: integrazione reale parser/indice
+    return KBIngestResponse(doc_id="doc_123", chunks=42)
 
     # Stub: in un secondo momento integra parser e indice dalla cartella kb/index
     return KBIngestResponse(doc_id="doc_123", chunks=42)
@@ -498,47 +532,54 @@ def kb_list(
 def kb_delete(
     doc_id: str,
     authorization: Optional[str] = Header(None),
-    x_env: Optional[str] = Header(default="test", alias="X-Env"),
+    x_env: Optional[str] = Header(default=None, alias="X-Env"),
     approved: Optional[str] = Header(default=None, alias=APPROVAL_HEADER),
 ):
     ensure_auth(authorization)
-    approval_gate(True, x_env, approved)  # ← aggiunto
-    return {"deleted": doc_id}
+    approval_gate(True, approved)  # ← aggiunto
+    # TODO: delete reale
+    return {"ok": True, "deleted_doc_id": doc_id}
 
 @app.post("/company/evidence/upsert")
 def company_evidence_upsert(
     payload: CompanyEvidence,
     authorization: Optional[str] = Header(None),
-    x_env: Optional[str] = Header(default="test", alias="X-Env"),
     approved: Optional[str] = Header(default=None, alias=APPROVAL_HEADER),
 ):
     ensure_auth(authorization)
-    approval_gate(True, x_env, approved)
+    approval_gate(True, approved)
+
     labels = []
     for e in (payload.erp or []):
         labels.append(f"CompanyEvidence: {e}")
-    return {"ok": True, "labels": labels}
+    stored = payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
+    return {"ok": True, "stored": stored}
 
 @app.get("/company/evidence/{company_id}", response_model=CompanyEvidence)
-def company_evidence_get(company_id: str, authorization: Optional[str] = Header(None)):
-    ensure_auth(authorization)
-    return CompanyEvidence(company_id=company_id, erp=["SAP"], competitor=["BIP"], tools=[])
+def company_evidence_get(company_id: str):
+    # TODO: fetch reale
+    return CompanyEvidence(company_id=company_id, erp=["SAP"], competitor=["X"], tools=["Y"])
 
 @app.post("/signals/record")
 def record_signal(
     payload: ManualSignal,
     authorization: Optional[str] = Header(None),
-    x_env: Optional[str] = Header(default="test", alias="X-Env"),
     approved: Optional[str] = Header(default=None, alias=APPROVAL_HEADER),
 ):
     ensure_auth(authorization)
-    approval_gate(consequential=True, x_env=x_env, approved=approved)
-    return {"ok": True, "stored": payload.dict()}
+    approval_gate(True, approved)      # <- azione mutante => richiede conferma in prod
+    
+    stored = payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
+    return {"ok": True, "stored": stored}
 
 @app.post("/coi/estimate", response_model=COIEstimateResponse)
 def coi_estimate(payload: COIEstimateRequest, authorization: Optional[str] = Header(None)):
     ensure_auth(authorization)
-    return COIEstimateResponse(status="estimated", note="COI ~ €25–40k/anno", assumptions=["5% errori","AOV €120","Process cost €2/ordine"])
+    return COIEstimateResponse(
+        status="estimated",
+        note="COI ~ €25–40k/anno",
+        assumptions=["5% errori","AOV €120","Process cost €2/ordine"]
+    )
 
 class ABPromoteRequest(BaseModel):
     sequence_id: str
@@ -548,32 +589,47 @@ class ABPromoteRequest(BaseModel):
 def ab_promote(
     payload: ABPromoteRequest,
     authorization: Optional[str] = Header(None),
-    x_env: Optional[str] = Header(default="test", alias="X-Env"),
     approved: Optional[str] = Header(default=None, alias=APPROVAL_HEADER),
 ):
     ensure_auth(authorization)
-    approval_gate(True, x_env, approved)
-    return {"ok": True, "sequence_id": payload.sequence_id, "variant_id": payload.variant_id}
+    approval_gate(True, approved)
+    
+    data = payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
+    return {"ok": "promoted": data}
 
 @app.get("/export/sequence/{sequence_id}")
-def export_sequence(sequence_id: str, format: Literal["csv","json"]="json", authorization: Optional[str] = Header(None)):
-    ensure_auth(authorization)
-    return {"sequence_id": sequence_id, "format": format, "url": f"https://download.example.com/{sequence_id}.{format}"}
+def export_sequence(sequence_id: str, format: str = "json"):
+    # TODO: export reale
+    if format == "csv":
+        return {"ok": True, "format": "csv", "sequence_id": sequence_id}
+    return {"ok": True, "format": "json", "sequence_id": sequence_id}
 
 @app.post("/send/email", response_model=SendEmailResponse)
 def send_email(
     payload: SendEmailRequest,
     authorization: Optional[str] = Header(None),
-    x_env: Optional[str] = Header(default="test", alias="X-Env"),
     approved: Optional[str] = Header(default=None, alias=APPROVAL_HEADER),
 ):
     ensure_auth(authorization)
-    approval_gate(True, x_env, approved)
-    return SendEmailResponse(message_id="msg_abc123", provider=payload.provider, queued_at=datetime.utcnow())
+    approval_gate(True, approved)
+
+    # TODO: integrazione provider reale
+    msg_id = f"msg_{int(datetime.now().timestamp())}"
+    queued = datetime.now(timezone.utc).isoformat()
+
+    return SendEmailResponse(
+        message_id=msg_id,
+        provider=payload.provider,
+        queued_at=queued,
+    )
+
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
 
 @app.post("/webhooks/events")
-def webhooks(payload: dict, x_webhook_token: Optional[str] = Header(None, alias="X-Webhook-Token")):
-    if x_webhook_token != os.getenv("WEBHOOK_TOKEN", "changeme"):
-        raise HTTPException(status_code=401, detail="Unauthorized webhook")
+def webhooks(payload: dict, x_webhook_token: Optional[str] = Header(None, alias="X-Webhook-Secret"),):
+    if not WEBHOOK_SECRET or x_webhook_secret != WEBHOOK_SECRET:
+        raise HTTPException(status_code=403, detail="Invalid webhook secret")
+
+    # TODO: gestisci evento
     return {"ok": True}
 
