@@ -71,7 +71,8 @@ app.add_middleware(
     allow_credentials=True,            # richiede che NON ci sia "*"
     allow_methods=["*"],
     allow_headers=["*"],               # include Authorization, X-Connector-Approved
-    expose_headers=["X-Connector-Approved"],
+    expose_headers=["X-Connector-Approved", "Idempotency-Key"],
+    max_age=3600,
 )
 
 @app.get("/health")
