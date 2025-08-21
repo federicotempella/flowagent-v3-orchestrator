@@ -493,10 +493,12 @@ def calendar_build(payload: CalendarBuildRequest, authorization: Optional[str] =
 def kb_ingest(
     payload: KBIngestRequest,
     authorization: Optional[str] = Header(None),
-    approved: Optional[str] = Header(default=None, alias=APPROVAL_HEADER),
+    approved_hdr: Optional[str] = Header(default=None, alias=APPROVAL_HEADER),
+    approved_q: Optional[str] = Query(default=None, alias="approved"),   # <-- NEW
 ):
     ensure_auth(authorization)
-    approval_gate(True, approved)
+    approval_gate(True, approved_hdr or approved_q)
+
 
     # TODO: integrazione reale parser/indice
     return KBIngestResponse(doc_id="doc_123", chunks=42)
@@ -541,10 +543,11 @@ def kb_list(
 def kb_delete(
     doc_id: str,
     authorization: Optional[str] = Header(None),
-    approved: Optional[str] = Header(default=None, alias=APPROVAL_HEADER),
+    approved_hdr: Optional[str] = Header(default=None, alias=APPROVAL_HEADER),
+    approved_q: Optional[str] = Query(default=None, alias="approved"),    # <-- NEW
 ):
     ensure_auth(authorization)
-    approval_gate(True, approved)  # ← aggiunto
+    approval_gate(True, approved_hdr or approved_q)  # ← aggiunto
     # TODO: delete reale
     return {"ok": True, "deleted_doc_id": doc_id}
 
@@ -584,7 +587,7 @@ def record_signal(
     ensure_auth(authorization)
     approved_effective = (approved_hdr or "").strip() or (approved_q or "").strip()
 
-    approval_gate(True, approved_efective)      # <- azione mutante => richiede conferma in prod
+    approval_gate(True, approved_effective)      # <- azione mutante => richiede conferma in prod
     
     stored = payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
     return {"ok": True, "stored": stored}
@@ -599,27 +602,25 @@ def coi_estimate(payload: COIEstimateRequest, authorization: Optional[str] = Hea
     )
 
 class ABPromoteRequest(BaseModel):
+    sequence_id: str
+    variant_id: str
+
+class ABPromoteResponse(BaseModel):
     ok: bool
     sequence_id: str
     variant_id: str
 
-@app.post("/ab/promote")
+@app.post("/ab/promote", response_model=ABPromoteResponse)
 def ab_promote(
     payload: ABPromoteRequest,
     authorization: Optional[str] = Header(None),
     approved_hdr: Optional[str] = Header(default=None, alias=APPROVAL_HEADER),
-    approved_q: Optional[str] = Query(default=None, alias="approved"), 
-
+    approved_q: Optional[str] = Query(default=None, alias="approved"),
 ):
     ensure_auth(authorization)
     approval_gate(True, approved_hdr or approved_q)
-    
     data = payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
-    return ABPromoteResponse(
-        ok=True,
-        sequence_id=data["sequence_id"],
-        variant_id=data["variant_id"],
-    )
+    return ABPromoteResponse(ok=True, sequence_id=data["sequence_id"], variant_id=data["variant_id"])
 
 @app.get("/export/sequence/{sequence_id}")
 def export_sequence(
