@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Literal
@@ -368,8 +368,13 @@ def generate_assets(
     payload: GenerateAssetsRequest,
     authorization: Optional[str] = Header(None),
     idemp: Optional[str] = Header(default=None, alias="Idempotency-Key"),
+    idempotency_key: Optional[str] = Query(default=None),
+
 ):
     ensure_auth(authorization)
+    effective_idemp = idemp or idempotency_key
+    # TODO: se vuoi, usa effective_idemp per dedup/log
+
     rr = _inline_research(company=None, req=payload.research)
     assets = []
     for t in (payload.use_assets or ["subject","hook","value_prop","proof","cta"]):
@@ -404,8 +409,12 @@ def generate_sequence(
     payload: GenerateSequenceRequest,
     authorization: Optional[str] = Header(None),
     idemp: Optional[str] = Header(default=None, alias="Idempotency-Key"),
+    idempotency_key: Optional[str] = Query(default=None),
 ):
     ensure_auth(authorization)
+    effective_idemp = idemp or idempotency_key
+    # TODO: se vuoi, usa effective_idemp per dedup/log
+
     company = payload.contacts[0].company if payload.contacts else None
     rr = _inline_research(company=company, req=payload.research)
 
@@ -543,14 +552,17 @@ def kb_delete(
 def company_evidence_upsert(
     payload: CompanyEvidence,
     authorization: Optional[str] = Header(None),
-    approved: Optional[str] = Header(default=None, alias=APPROVAL_HEADER),
+    approved_hdr: Optional[str] = Header(default=None, alias=APPROVAL_HEADER),
+    approved_q: Optional[str] = Query(default=None, alias="approved"),
 ):
     ensure_auth(authorization)
+    approved = approved_hdr or approved_q  # <-- fallback header -> query
     approval_gate(True, approved)
 
     labels = []
     for e in (payload.erp or []):
         labels.append(f"CompanyEvidence: {e}")
+
     stored = payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
     return {"ok": True, "stored": stored}
 
@@ -566,10 +578,13 @@ def company_evidence_get(
 def record_signal(
     payload: ManualSignal,
     authorization: Optional[str] = Header(None),
-    approved: Optional[str] = Header(default=None, alias=APPROVAL_HEADER),
+    approved_hdr: Optional[str] = Header(default=None, alias=APPROVAL_HEADER),
+    approved_q: Optional[str] = Query(default=None, alias="approved"),
 ):
     ensure_auth(authorization)
-    approval_gate(True, approved)      # <- azione mutante => richiede conferma in prod
+    approved_effective = (approved_hdr or "").strip() or (approved_q or "").strip()
+
+    approval_gate(True, approved_efective)      # <- azione mutante => richiede conferma in prod
     
     stored = payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
     return {"ok": True, "stored": stored}
@@ -584,6 +599,7 @@ def coi_estimate(payload: COIEstimateRequest, authorization: Optional[str] = Hea
     )
 
 class ABPromoteRequest(BaseModel):
+    ok: bool
     sequence_id: str
     variant_id: str
 
@@ -591,13 +607,19 @@ class ABPromoteRequest(BaseModel):
 def ab_promote(
     payload: ABPromoteRequest,
     authorization: Optional[str] = Header(None),
-    approved: Optional[str] = Header(default=None, alias=APPROVAL_HEADER),
+    approved_hdr: Optional[str] = Header(default=None, alias=APPROVAL_HEADER),
+    approved_q: Optional[str] = Query(default=None, alias="approved"), 
+
 ):
     ensure_auth(authorization)
-    approval_gate(True, approved)
+    approval_gate(True, approved_hdr or approved_q)
     
     data = payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
-    return {"ok": True, "promoted": data}
+    return ABPromoteResponse(
+        ok=True,
+        sequence_id=data["sequence_id"],
+        variant_id=data["variant_id"],
+    )
 
 @app.get("/export/sequence/{sequence_id}")
 def export_sequence(
@@ -613,10 +635,12 @@ def export_sequence(
 def send_email(
     payload: SendEmailRequest,
     authorization: Optional[str] = Header(None),
-    approved: Optional[str] = Header(default=None, alias=APPROVAL_HEADER),
+    approved_hdr: Optional[str] = Header(default=None, alias=APPROVAL_HEADER),
+    # Query: ?approved=true|yes|1|on
+    approved_q: Optional[str] = Query(default=None, alias="approved"),
 ):
     ensure_auth(authorization)
-    approval_gate(True, approved)
+    approval_gate(True, approved_hdr or approved_q )
 
     msg_id = f"msg_{int(datetime.now(timezone.utc).timestamp())}"
     queued = datetime.now(timezone.utc)
