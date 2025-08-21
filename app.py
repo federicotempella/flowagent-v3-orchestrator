@@ -11,6 +11,31 @@ load_dotenv()
 
 APP_ENV = os.getenv("APP_ENV", "test").lower()
 APPROVAL_HEADER = "X-Connector-Approved"
+IDEMPOTENCY_HEADER = "Idempotency-Key"
+
+TRUTHY = {"true", "yes", "1", "on"}
+
+def ensure_auth(token: Optional[str]):
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing Authorization")
+
+def approval_gate(consequential: bool, approved: Optional[str]):
+    # se non è mutante, nessun gate
+    if not consequential:
+        return
+    # se sei in prod, richiedi un valore truthy
+    # (adatta al tuo flag/ambiente reale)
+    is_prod = True
+    if is_prod and not (approved and approved.strip().lower() in TRUTHY):
+        raise HTTPException(
+            status_code=428,
+            detail={
+                "message": "Approval required",
+                "consequential": True,
+                "env": "prod",
+                "hint": "Pass approved=true oppure header X-Connector-Approved: true",
+            },
+        )
 
 docs_on = os.getenv("DOCS_ENABLED", "true").lower() in ("1","true","yes","on")
 
