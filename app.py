@@ -392,12 +392,12 @@ def _inline_research(company: Optional[str], req: Optional[ResearchParams]) -> O
 def generate_assets(
     payload: GenerateAssetsRequest,
     authorization: Optional[str] = Header(None),
-    idemp: Optional[str] = Header(default=None, alias="Idempotency-Key"),
-    idempotency_key: Optional[str] = Query(default=None),
+    idem_hdr: Optional[str] = Header(default=None, alias="Idempotency-Key"),
+    idem_q: Optional[str] = Query(default=None, alias="idempotency_key"),
 
 ):
     ensure_auth(authorization)
-    effective_idemp = idemp or idempotency_key
+    idempotency_key = idem_hdr or idem_q
     # TODO: se vuoi, usa effective_idemp per dedup/log
 
     rr = _inline_research(company=None, req=payload.research)
@@ -433,12 +433,12 @@ def generate_assets(
 def generate_sequence(
     payload: GenerateSequenceRequest,
     authorization: Optional[str] = Header(None),
-    idemp: Optional[str] = Header(default=None, alias="Idempotency-Key"),
-    idempotency_key: Optional[str] = Query(default=None),
+    idem_hdr: Optional[str] = Header(default=None, alias="Idempotency-Key"),
+    idem_q: Optional[str] = Query(default=None, alias="idempotency_key"),
 ):
     ensure_auth(authorization)
-    effective_idemp = idemp or idempotency_key
-    # TODO: se vuoi, usa effective_idemp per dedup/log
+    idempotency_key = idem_hdr or idem_q
+    # TODO: opzionale: dedup/lock in base a idempotency_key
 
     company = payload.contacts[0].company if payload.contacts else None
     rr = _inline_research(company=company, req=payload.research)
@@ -574,7 +574,7 @@ def kb_delete(
     ensure_auth(authorization)
     approval_gate(True, approved_hdr or approved_q)  # ← aggiunto
     # TODO: delete reale
-    return {"ok": True, "deleted_doc_id": doc_id}
+    return KBDeleteResponse{"ok": True, "deleted_doc_id": doc_id}
 
 @app.post("/company/evidence/upsert")
 def company_evidence_upsert(
@@ -584,8 +584,7 @@ def company_evidence_upsert(
     approved_q: Optional[str] = Query(default=None, alias="approved"),
 ):
     ensure_auth(authorization)
-    approved = approved_hdr or approved_q  # <-- fallback header -> query
-    approval_gate(True, approved)
+    approval_gate(True, approved_hdr or approved_q)
 
     labels = []
     for e in (payload.erp or []):
@@ -610,9 +609,7 @@ def record_signal(
     approved_q: Optional[str] = Query(default=None, alias="approved"),
 ):
     ensure_auth(authorization)
-    approved_effective = (approved_hdr or "").strip() or (approved_q or "").strip()
-
-    approval_gate(True, approved_effective)      # <- azione mutante => richiede conferma in prod
+    approval_gate(True, approved approved_hdr or approved_q)      # <- azione mutante => richiede conferma in prod
     
     stored = payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
     return {"ok": True, "stored": stored}
@@ -666,7 +663,7 @@ def send_email(
     approved_q: Optional[str] = Query(default=None, alias="approved"),
 ):
     ensure_auth(authorization)
-    approval_gate(True, approved_hdr or approved_q )
+    approval_gate(True, approved_hdr or approved_q)
 
     msg_id = f"msg_{int(datetime.now(timezone.utc).timestamp())}"
     queued = datetime.now(timezone.utc)
