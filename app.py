@@ -240,7 +240,8 @@ class ComplianceRequest(BaseModel):
 
 class ComplianceResponse(BaseModel):
     pass_: bool = Field(alias="pass")
-    violations: List[Dict[str,Any]] = []
+    violations: List[Dict[str,Any]] = Field(default_factory=list)
+    model_config = ConfigDict(populate_by_name=True)
 
     class Config:
         allow_population_by_field_name = True
@@ -382,24 +383,6 @@ def _inline_research(company: Optional[str], req: Optional[ResearchParams]) -> O
 
 # ---------- Endpoints ----------
 
-@app.post("/validate/compliance", response_model=ComplianceResponse)
-def compliance_validate(
-    payload: ComplianceRequest,
-    authorization: Optional[str] = Header(None),
-):
-    ensure_auth(authorization)
-    text = payload.text or ""
-    violations = []
-
-    # Esempio di regolette banali:
-    if len(text) > 1000:
-        violations.append({"code": "LENGTH", "msg": "Testo troppo lungo"})
-    if "offerta" in text.lower() and "obbligo" in text.lower():
-        violations.append({"code": "PRESSURE", "msg": "CTA potenzialmente aggressiva"})
-
-    return ComplianceResponse(pass_=(len(violations) == 0), violations=violations)
-
-
 @app.post("/run/generate_assets", response_model=GenerateAssetsResponse)
 def generate_assets(
     payload: GenerateAssetsRequest,
@@ -499,24 +482,42 @@ def rank(payload: RankRequest, authorization: Optional[str] = Header(None)):
     return RankResponse(ranked=ranked)
 
 @app.post("/validate/compliance", response_model=ComplianceResponse)
+@app.post("/validate/compliance", response_model=ComplianceResponse)
 def compliance(payload: ComplianceRequest, authorization: Optional[str] = Header(None)):
     ensure_auth(authorization)
+
     rules = payload.rules or {}
+    text = payload.text or ""
+    text_low = text.lower()
     violations = []
-    text_low = payload.text.lower()
 
+    # 1) CTA chiara (default: True)
     if rules.get("require_cta", True) and not any(x in text_low for x in ["?", "prenot", "disponibile", "chi"]):
-        violations.append({"code":"CTA_MISSING","detail":"Manca una call-to-action chiara"})
+        violations.append({"code": "CTA_MISSING", "detail": "Manca una call-to-action chiara"})
 
-    if rules.get("anti_jargon", True) and any(bad.lower() in text_low for bad in (rules.get("banned_terms") or [])):
-        violations.append({"code":"JARGON","detail":"Termini vietati trovati"})
+    # 2) Anti-jargon (default: True) con lista opzionale di termini vietati (rules.banned_terms)
+    banned = (rules.get("banned_terms") or [])
+    if rules.get("anti_jargon", True) and any(b.lower() in text_low for b in banned):
+        violations.append({"code": "JARGON", "detail": "Termini vietati trovati"})
 
+    # 3) Lunghezza massima in parole (se fornita)
     if rules.get("max_words"):
-        words = len(payload.text.split())
+        words = len(text.split())
         if words > int(rules["max_words"]):
-            violations.append({"code":"TOO_LONG","detail":f"Testo {words} parole > max {rules['max_words']}"})
+            violations.append({"code": "TOO_LONG", "detail": f"Testo {words} parole > max {rules['max_words']}"})
 
-    return ComplianceResponse(pass_=len(violations)==0, violations=violations)
+    # --- Aggiunte opzionali (QUI, prima del return) ---
+
+    # 4) (opzionale) max_chars: limite caratteri
+    if rules.get("max_chars"):
+        if len(text) > int(rules["max_chars"]):
+            violations.append({"code": "LENGTH", "detail": f"Testo troppo lungo (> {rules['max_chars']} chars)"})
+
+    # 5) (opzionale) anti_pressure: blocca combinazioni di pressione commerciale
+    if rules.get("anti_pressure", True) and ("offerta" in text_low and "obbligo" in text_low):
+        violations.append({"code": "PRESSURE", "detail": "CTA potenzialmente aggressiva"})
+
+    return ComplianceResponse(pass_=len(violations) == 0, violations=violations)
 
 def next_workday(d: date) -> date:
     while d.weekday() >= 5:  # 5=Sat, 6=Sun
@@ -524,7 +525,12 @@ def next_workday(d: date) -> date:
     return d
 
 @app.post("/calendar/build", response_model=CalendarBuildResponse)
-def calendar_build(payload: CalendarBuildRequest):
+def calendar_build(
+    payload: CalendarBuildRequest,
+    authorization: Optional[str] = Header(None),   # <— aggiungi
+):
+    ensure_auth(authorization)                      # <— aggiungi
+
     events = []
     start = date.fromisoformat(payload.start_date) if payload.start_date else date.today()
     rules = payload.rules or CalendarRules()
@@ -535,8 +541,6 @@ def calendar_build(payload: CalendarBuildRequest):
         if rules.no_weekend:
             d = next_workday(d)
         events.append(CalendarEvent(date=d.isoformat(), action=sa.action, no_weekend_respected=True))
-
-    # (opzionale) usare payload.signals per appendere azioni condizionali
 
     ics = "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//FlowagentV3//EN\nEND:VCALENDAR"
     return CalendarBuildResponse(calendar=events, ics=ics)
