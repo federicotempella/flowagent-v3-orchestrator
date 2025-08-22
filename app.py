@@ -1,7 +1,7 @@
 import os
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, ConfigDict
 from typing import List, Dict, Any, Optional, Literal
 from datetime import datetime, date, timedelta, timezone
 from fastapi.responses import HTMLResponse
@@ -236,15 +236,12 @@ class RankResponse(BaseModel):
 
 class ComplianceRequest(BaseModel):
     text: str
-    rules: Optional[Dict[str,Any]] = []
+    rules: Dict[str, Any] = Field(default_factory=dict)
 
 class ComplianceResponse(BaseModel):
     pass_: bool = Field(alias="pass")
-    violations: List[Dict[str,Any]] = Field(default_factory=list)
+    violations: List[Dict[str, Any]] = Field(default_factory=list)
     model_config = ConfigDict(populate_by_name=True)
-
-    class Config:
-        allow_population_by_field_name = True
 
 class CalendarBuildRequest(BaseModel):
     start_date: date | None = None
@@ -491,8 +488,11 @@ def compliance(payload: ComplianceRequest, authorization: Optional[str] = Header
     if rules.get("require_cta", True) and not any(x in text_low for x in ["?", "prenot", "disponibile", "chi"]):
         violations.append({"code": "CTA_MISSING", "detail": "Manca una call-to-action chiara"})
 
-    if rules.get("anti_jargon", True) and any((rules.get("banned_terms") or []) and bad.lower() in text_low for bad in (rules.get("banned_terms") or [])):
-        violations.append({"code": "JARGON", "detail": "Termini vietati trovati"})
+    if rules.get("anti_jargon", True):
+    for bad in rules.get("banned_terms", []):
+        if bad.lower() in text_low:
+            violations.append({"code": "JARGON", "detail": "Termini vietati trovati"})
+            break
 
     if rules.get("max_words"):
         words = len((payload.text or "").split())
