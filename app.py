@@ -567,7 +567,7 @@ def kb_delete(
     ensure_auth(authorization)
     approval_gate(True, approved_hdr or approved_q)  # ← aggiunto
     # TODO: delete reale
-    return KBDeleteResponse{ok=True, "deleted_doc_id": doc_id}
+    return KBDeleteResponse(ok=True, deleted_doc_id=doc_id)
 
 @app.post("/company/evidence/upsert", response_model=UpsertResponse)
 def company_evidence_upsert(
