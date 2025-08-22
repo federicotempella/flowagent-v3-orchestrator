@@ -2,7 +2,7 @@ import os
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, EmailStr
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime, date, timedelta, timezone
 from fastapi.responses import HTMLResponse
 from dotenv import load_dotenv
@@ -12,6 +12,7 @@ load_dotenv()
 APP_ENV = os.getenv("APP_ENV", "test").lower()
 APPROVAL_HEADER = "X-Connector-Approved"
 IDEMPOTENCY_HEADER = "Idempotency-Key"
+BEARER_TOKEN = os.getenv("BEARER_TOKEN", "")
 
 TRUTHY = {"true", "yes", "1", "on"}
 
@@ -20,7 +21,7 @@ docs_on = os.getenv("DOCS_ENABLED", "true").lower() in ("1","true","yes","on")
 app = FastAPI(
     title="Flowagent V3 Orchestrator",
     version="1.1.0",
-    docs_url="/docs" if docs_on else None,   
+    docs_url="/docs" if docs_on else None,
     redoc_url=None,
     openapi_url="/openapi.json",
 )
@@ -55,7 +56,7 @@ def root_banner():
     return HTMLResponse(html)
 
 @app.get("/ping", include_in_schema=False)
-def ping(): 
+def ping():
     return {"service":"flowagent-v3","status":"ok","docs":"/docs"}
 
 # PRIMA di app.add_middleware
@@ -240,7 +241,7 @@ class ComplianceRequest(BaseModel):
 
 class ComplianceResponse(BaseModel):
     pass_: bool = Field(alias="pass")
-    violations: List[Dict[str, Any]] = [] 
+    violations: List[Dict[str, Any]] = []
 
 class CalendarBuildRequest(BaseModel):
     start_date: date | None = None
@@ -294,9 +295,9 @@ class SendEmailRequest(BaseModel):
     html: Optional[str] = None
     variant_id: Optional[str] = None
     campaign_id: Optional[str] = None
-    
-    class Config: 
-	allow_population_by_field_name = True
+
+    class Config:
+     allow_population_by_field_name = True
 
 class SendEmailResponse(BaseModel):
     message_id: str
@@ -659,7 +660,7 @@ def record_signal(
 ):
     ensure_auth(authorization)
     approval_gate(True, approved_hdr or approved_q)      # <- azione mutante => richiede conferma in prod
-    
+
     stored = payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
     return UpsertResponse(ok=True, stored=stored)
 
@@ -719,7 +720,7 @@ WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
 
 @app.post("/webhooks/events", include_in_schema=False)
 def webhooks (
-    payload: dict, 
+    payload: dict,
     x_webhook_secret: Optional[str] = Header(None, alias="X-Webhook-Secret"),
 ):
     if not WEBHOOK_SECRET or x_webhook_secret != WEBHOOK_SECRET:
