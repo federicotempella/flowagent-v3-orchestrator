@@ -242,9 +242,6 @@ class ComplianceResponse(BaseModel):
     pass_: bool = Field(alias="pass")
     violations: List[Dict[str, Any]] = [] 
 
-    class Config: 
-	allow_population_by_field_name = True
-
 class CalendarBuildRequest(BaseModel):
     start_date: date | None = None
     rules: CalendarRules = Field(default_factory=CalendarRules)          # sempre presente
