@@ -2,8 +2,8 @@ import os
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, EmailStr
-from typing import List, Optional, Literal
-from datetime import datetime, date, timezone
+from typing import List, Dict, Any, Optional, Literal
+from datetime import datetime, date, timezone, timedelta
 from fastapi.responses import HTMLResponse
 from dotenv import load_dotenv
 load_dotenv()
@@ -236,11 +236,11 @@ class RankResponse(BaseModel):
 
 class ComplianceRequest(BaseModel):
     text: str
-    rules: Optional[dict] = None
+    rules: Optional[Dict[str,Any]] = []
 
 class ComplianceResponse(BaseModel):
-    pass_: bool = Field(..., alias="pass")
-    violations: list[dict] = Field(default_factory=list)
+    pass_: bool = Field(alias="pass")
+    violations: List[Dict[str,Any]] = []
 
     class Config:
         allow_population_by_field_name = True
@@ -381,6 +381,25 @@ def _inline_research(company: Optional[str], req: Optional[ResearchParams]) -> O
     return ResearchResult(triggers=triggers, facts=facts, citations=cites)
 
 # ---------- Endpoints ----------
+
+@app.post("/validate/compliance", response_model=ComplianceResponse)
+def compliance_validate(
+    payload: ComplianceRequest,
+    authorization: Optional[str] = Header(None),
+):
+    ensure_auth(authorization)
+    text = payload.text or ""
+    violations = []
+
+    # Esempio di regolette banali:
+    if len(text) > 1000:
+        violations.append({"code": "LENGTH", "msg": "Testo troppo lungo"})
+    if "offerta" in text.lower() and "obbligo" in text.lower():
+        violations.append({"code": "PRESSURE", "msg": "CTA potenzialmente aggressiva"})
+
+    return ComplianceResponse(pass_=(len(violations) == 0), violations=violations)
+
+
 @app.post("/run/generate_assets", response_model=GenerateAssetsResponse)
 def generate_assets(
     payload: GenerateAssetsRequest,
@@ -499,13 +518,28 @@ def compliance(payload: ComplianceRequest, authorization: Optional[str] = Header
 
     return ComplianceResponse(pass_=len(violations)==0, violations=violations)
 
+def next_workday(d: date) -> date:
+    while d.weekday() >= 5:  # 5=Sat, 6=Sun
+        d += timedelta(days=1)
+    return d
+
 @app.post("/calendar/build", response_model=CalendarBuildResponse)
-def calendar_build(payload: CalendarBuildRequest, authorization: Optional[str] = Header(None)):
-    ensure_auth(authorization)
-    start = payload.start_date or date.today()
-    cal = [CalendarEvent(date=start, action="Step 1", no_weekend_respected=True)]
+def calendar_build(payload: CalendarBuildRequest):
+    events = []
+    start = date.fromisoformat(payload.start_date) if payload.start_date else date.today()
+    rules = payload.rules or CalendarRules()
+
+    base = payload.base_sequence or [SequenceAction(day=0, action="Step 1")]
+    for sa in base:
+        d = start + timedelta(days=sa.day)
+        if rules.no_weekend:
+            d = next_workday(d)
+        events.append(CalendarEvent(date=d.isoformat(), action=sa.action, no_weekend_respected=True))
+
+    # (opzionale) usare payload.signals per appendere azioni condizionali
+
     ics = "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//FlowagentV3//EN\nEND:VCALENDAR"
-    return CalendarBuildResponse(calendar=cal, ics=ics)
+    return CalendarBuildResponse(calendar=events, ics=ics)
 
 @app.post("/kb/ingest", response_model=KBIngestResponse)
 def kb_ingest(
