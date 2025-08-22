@@ -547,7 +547,7 @@ def calendar_build(
     ensure_auth(authorization)
 
     events = []
-    start = date.fromisoformat(payload.start_date) if payload.start_date else date.today()
+    start = payload.start_date if payload.start_date else date.today()
     rules = payload.rules or CalendarRules()
 
     base = payload.base_sequence or [SequenceAction(day=0, action="Step 1")]
