@@ -497,7 +497,7 @@ def rank(payload: RankRequest, authorization: Optional[str] = Header(None)):
     ranked = [{"id": it.id, "score": round(0.9 - i*0.07, 3), "reason": f"Coerenza {payload.objective}"} for i,it in enumerate(payload.items)]
     return RankResponse(ranked=ranked)
 
-@app.post("/validate/compliance", response_model=ComplianceResponse)
+@app.post("/validate/compliance", response_model=ComplianceResponse, response_model_by_alias=True)
 def compliance(
     payload: ComplianceRequest,
     authorization: Optional[str] = Header(None),
