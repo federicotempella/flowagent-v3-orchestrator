@@ -1,8 +1,8 @@
 import os
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, EmailStr, ConfigDict
-from typing import List, Dict, Any, Optional, Literal
+from pydantic import BaseModel, Field, EmailStr
+from typing import Optional, List, Dict, Any
 from datetime import datetime, date, timedelta, timezone
 from fastapi.responses import HTMLResponse
 from dotenv import load_dotenv
@@ -240,8 +240,10 @@ class ComplianceRequest(BaseModel):
 
 class ComplianceResponse(BaseModel):
     pass_: bool = Field(alias="pass")
-    violations: List[Dict[str, Any]] = Field(default_factory=list)
-    model_config = ConfigDict(populate_by_name=True)
+    violations: List[Dict[str, Any]] = [] 
+
+    class Config: 
+	allow_population_by_field_name = True
 
 class CalendarBuildRequest(BaseModel):
     start_date: date | None = None
@@ -289,12 +291,15 @@ class KBDeleteResponse(BaseModel):
 class SendEmailRequest(BaseModel):
     provider: Literal["sendgrid","mailgun","smtp","gmail","outlook"]
     to: EmailStr
-    from_: EmailStr = Field(..., alias="from")
+    from_: EmailStr = Field(alias="from")
     subject: str
     text: str
     html: Optional[str] = None
     variant_id: Optional[str] = None
     campaign_id: Optional[str] = None
+    
+    class Config: 
+	allow_population_by_field_name = True
 
 class SendEmailResponse(BaseModel):
     message_id: str
@@ -336,12 +341,11 @@ class ExportSequenceResponse(BaseModel):
     sequence_id: str
 
 # ---------- Helpers ----------
-def ensure_auth(auth_header: str | None):
-    if not auth_header or not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    expected = os.getenv("BEARER_TOKEN", "")
-    token = auth_header[len("Bearer "):].strip()
-    if expected and token != expected:
+def ensure_auth(authorization: Optional[str]):
+    token = None
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+    if not token or token != BEARER_TOKEN:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 # --- Approval gate (bypassabile in TEST, richiede conferma in PROD) ---
@@ -437,19 +441,36 @@ def generate_sequence(
 
     # Build messages (email + linkedin)
     email_text = (
-        "Oggetto: Onboarding EDI senza carichi extra\n\n"
-        "Buongiorno {Nome},\n"
-        "ho notato segnali di upgrade EDI; spesso l’impatto è su ticket e tempi di integrazione.\n"
-        "In un caso retail simile abbiamo ridotto i ticket -35% e il lead time -50% in 90 giorni.\n"
-        "Se utile, posso condividere la check-list in 12 minuti – le va bene mercoledì?\n"
+    	"Oggetto: Onboarding EDI senza carichi extra\n\n"
+    	"Buongiorno {Nome},\n"
+    	"ho notato segnali di upgrade EDI; spesso l’impatto è su ticket e tempi di integrazione.\n"
+    	"In un caso retail simile abbiamo ridotto i ticket -35% e il lead time -50% in 90 giorni.\n"
+    	"Se utile, posso condividere la check-list in 12 minuti – le va bene mercoledì?\n"
     )
     dm_text = "Spunto rapido su EDI/API – se utile scambiamo 10’ questa settimana per capire fit e tempi."
 
     msgs = [
-        Message(channel="email", step="1", variant="A", subject="EDI/API: evitare carichi extra per l’IT", text=email_text),
-        Message(channel="linkedin_dm", step="2", variant="A", text=dm_text, tips=["Tenere sotto 240 caratteri","CTA soft - proposta tempo breve"]),
-        Message(channel="inmail", step="3", variant="A", subject="Idea per ridurre ticket EDI del 35%", text="Teaser 1-sentence: Ha senso valutare un check rapido sul flusso EDI?")
-    ]
+    Message(
+        channel="email",
+        step="1",
+        variant="A",
+        subject="EDI/API: evitare carichi extra per l'IT",
+        text=email_text,
+    ),
+    Message(
+        channel="linkedin_dm",
+        step="2",
+        variant="A",
+        text=dm_text,
+    ),
+    Message(
+        channel="inmail",
+        step="3",
+        variant="A",
+        subject="Richiesta rapida",
+        text="Ha senso valutare un check rapido sul flusso EDI?",
+    ),
+]
 
     cal = [CalendarEvent(date=date.today(), action="Email Step 1", no_weekend_respected=True)]
     labels = ["Poke-AB"]
@@ -479,28 +500,40 @@ def rank(payload: RankRequest, authorization: Optional[str] = Header(None)):
     return RankResponse(ranked=ranked)
 
 @app.post("/validate/compliance", response_model=ComplianceResponse)
-def compliance(payload: ComplianceRequest, authorization: Optional[str] = Header(None)):
+def compliance(
+    payload: ComplianceRequest,
+    authorization: Optional[str] = Header(None),
+):
     ensure_auth(authorization)
-    rules = payload.rules or {}
-    violations = []
+
+    rules: Dict[str, Any] = payload.rules or {}
     text_low = (payload.text or "").lower()
+    violations: List[Dict[str, Any]] = []
 
-    if rules.get("require_cta", True) and not any(x in text_low for x in ["?", "prenot", "disponibile", "chi"]):
-        violations.append({"code": "CTA_MISSING", "detail": "Manca una call-to-action chiara"})
+    # 1) CTA richiesta?
+    if rules.get("require_cta", True):
+        if not any(x in text_low for x in ["?", "prenot", "disponibile", "chi"]):
+            violations.append({"code": "CTA_MISSING", "detail": "Manca una call-to-action chiara"})
 
+    # 2) Anti-jargon / termini vietati
     if rules.get("anti_jargon", True):
-    for bad in rules.get("banned_terms", []):
-        if bad.lower() in text_low:
+        banned = rules.get("banned_terms") or []
+        if any((bad or "").lower() in text_low for bad in banned):
             violations.append({"code": "JARGON", "detail": "Termini vietati trovati"})
-            break
 
-    if rules.get("max_words"):
-        words = len((payload.text or "").split())
-        if words > int(rules["max_words"]):
-            violations.append({"code": "TOO_LONG", "detail": f"Testo {words} parole > max {rules['max_words']}"})
+    # 3) Limite parole opzionale
+    max_words = rules.get("max_words")
+    if max_words:
+        try:
+            mw = int(max_words)
+            words = len((payload.text or "").split())
+            if words > mw:
+                violations.append({"code": "TOO_LONG", "detail": f"Testo {words} parole > max {mw}"})
+        except Exception:
+            # se max_words non è numerico, ignoro
+            pass
 
-    # 🔑 restituisco un dict con "pass" (niente alias da gestire)
-    return {"pass": len(violations) == 0, "violations": violations}
+    return ComplianceResponse(pass_=(len(violations) == 0), violations=violations)
 
 def next_workday(d: date) -> date:
     """Rimanda a lunedì se la data cade nel weekend, senza saltare giorni feriali."""
