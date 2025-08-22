@@ -3,7 +3,7 @@ from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Dict, Any, Optional, Literal
-from datetime import datetime, date, timezone, timedelta
+from datetime import datetime, date, timedelta, timezone
 from fastapi.responses import HTMLResponse
 from dotenv import load_dotenv
 load_dotenv()
@@ -482,54 +482,38 @@ def rank(payload: RankRequest, authorization: Optional[str] = Header(None)):
     return RankResponse(ranked=ranked)
 
 @app.post("/validate/compliance", response_model=ComplianceResponse)
-@app.post("/validate/compliance", response_model=ComplianceResponse)
 def compliance(payload: ComplianceRequest, authorization: Optional[str] = Header(None)):
     ensure_auth(authorization)
-
     rules = payload.rules or {}
-    text = payload.text or ""
-    text_low = text.lower()
     violations = []
+    text_low = (payload.text or "").lower()
 
-    # 1) CTA chiara (default: True)
     if rules.get("require_cta", True) and not any(x in text_low for x in ["?", "prenot", "disponibile", "chi"]):
         violations.append({"code": "CTA_MISSING", "detail": "Manca una call-to-action chiara"})
 
-    # 2) Anti-jargon (default: True) con lista opzionale di termini vietati (rules.banned_terms)
-    banned = (rules.get("banned_terms") or [])
-    if rules.get("anti_jargon", True) and any(b.lower() in text_low for b in banned):
+    if rules.get("anti_jargon", True) and any((rules.get("banned_terms") or []) and bad.lower() in text_low for bad in (rules.get("banned_terms") or [])):
         violations.append({"code": "JARGON", "detail": "Termini vietati trovati"})
 
-    # 3) Lunghezza massima in parole (se fornita)
     if rules.get("max_words"):
-        words = len(text.split())
+        words = len((payload.text or "").split())
         if words > int(rules["max_words"]):
             violations.append({"code": "TOO_LONG", "detail": f"Testo {words} parole > max {rules['max_words']}"})
 
-    # --- Aggiunte opzionali (QUI, prima del return) ---
-
-    # 4) (opzionale) max_chars: limite caratteri
-    if rules.get("max_chars"):
-        if len(text) > int(rules["max_chars"]):
-            violations.append({"code": "LENGTH", "detail": f"Testo troppo lungo (> {rules['max_chars']} chars)"})
-
-    # 5) (opzionale) anti_pressure: blocca combinazioni di pressione commerciale
-    if rules.get("anti_pressure", True) and ("offerta" in text_low and "obbligo" in text_low):
-        violations.append({"code": "PRESSURE", "detail": "CTA potenzialmente aggressiva"})
-
-    return ComplianceResponse(pass_=len(violations) == 0, violations=violations)
+    # 🔑 restituisco un dict con "pass" (niente alias da gestire)
+    return {"pass": len(violations) == 0, "violations": violations}
 
 def next_workday(d: date) -> date:
-    while d.weekday() >= 5:  # 5=Sat, 6=Sun
+    """Rimanda a lunedì se la data cade nel weekend, senza saltare giorni feriali."""
+    while d.weekday() >= 5:  # 5=Sab, 6=Dom
         d += timedelta(days=1)
     return d
 
 @app.post("/calendar/build", response_model=CalendarBuildResponse)
 def calendar_build(
     payload: CalendarBuildRequest,
-    authorization: Optional[str] = Header(None),   # <— aggiungi
+    authorization: Optional[str] = Header(None),
 ):
-    ensure_auth(authorization)                      # <— aggiungi
+    ensure_auth(authorization)
 
     events = []
     start = date.fromisoformat(payload.start_date) if payload.start_date else date.today()
@@ -540,7 +524,11 @@ def calendar_build(
         d = start + timedelta(days=sa.day)
         if rules.no_weekend:
             d = next_workday(d)
-        events.append(CalendarEvent(date=d.isoformat(), action=sa.action, no_weekend_respected=True))
+        events.append(
+            CalendarEvent(date=d.isoformat(), action=sa.action, no_weekend_respected=True)
+        )
+
+    # (eventuale logica su payload.signals...)
 
     ics = "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//FlowagentV3//EN\nEND:VCALENDAR"
     return CalendarBuildResponse(calendar=events, ics=ics)
