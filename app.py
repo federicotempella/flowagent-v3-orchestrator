@@ -15,28 +15,6 @@ IDEMPOTENCY_HEADER = "Idempotency-Key"
 
 TRUTHY = {"true", "yes", "1", "on"}
 
-def ensure_auth(token: Optional[str]):
-    if not token:
-        raise HTTPException(status_code=401, detail="Missing Authorization")
-
-def approval_gate(consequential: bool, approved: Optional[str]):
-    # se non è mutante, nessun gate
-    if not consequential:
-        return
-    # se sei in prod, richiedi un valore truthy
-    # (adatta al tuo flag/ambiente reale)
-    is_prod = True
-    if is_prod and not (approved and approved.strip().lower() in TRUTHY):
-        raise HTTPException(
-            status_code=428,
-            detail={
-                "message": "Approval required",
-                "consequential": True,
-                "env": "prod",
-                "hint": "Pass approved=true oppure header X-Connector-Approved: true",
-            },
-        )
-
 docs_on = os.getenv("DOCS_ENABLED", "true").lower() in ("1","true","yes","on")
 
 app = FastAPI(
@@ -241,6 +219,8 @@ class GenerateSequenceRequest(BaseModel):
     buyer_persona_ids: Optional[List[str]] = None
     research: Optional[ResearchParams] = None
 
+
+
 class RankItem(BaseModel):
     id: str
     channel: Channel
@@ -304,6 +284,10 @@ class KBIngestResponse(BaseModel):
     doc_id: str
     chunks: int
 
+class KBDeleteResponse(BaseModel):
+    ok: bool
+    deleted_doc_id: str
+
 class SendEmailRequest(BaseModel):
     provider: Literal["sendgrid","mailgun","smtp","gmail","outlook"]
     to: EmailStr
@@ -343,6 +327,15 @@ class COIEstimateResponse(BaseModel):
     status: Literal["estimated","computed"]
     note: str
     assumptions: list[str] = Field(default_factory=list)
+
+class UpsertResponse(BaseModel):
+    ok: bool
+    stored: dict
+
+class ExportSequenceResponse(BaseModel):
+    ok: bool
+    format: Literal["csv","json"]
+    sequence_id: str
 
 # ---------- Helpers ----------
 def ensure_auth(auth_header: str | None):
@@ -564,7 +557,7 @@ def kb_list(
         )
     ])
 
-@app.delete("/kb/doc/{doc_id}")
+@app.delete("/kb/doc/{doc_id}", response_model=KBDeleteResponse)
 def kb_delete(
     doc_id: str,
     authorization: Optional[str] = Header(None),
@@ -574,9 +567,9 @@ def kb_delete(
     ensure_auth(authorization)
     approval_gate(True, approved_hdr or approved_q)  # ← aggiunto
     # TODO: delete reale
-    return KBDeleteResponse{"ok": True, "deleted_doc_id": doc_id}
+    return KBDeleteResponse{ok=True, "deleted_doc_id": doc_id}
 
-@app.post("/company/evidence/upsert")
+@app.post("/company/evidence/upsert", response_model=UpsertResponse)
 def company_evidence_upsert(
     payload: CompanyEvidence,
     authorization: Optional[str] = Header(None),
@@ -591,7 +584,7 @@ def company_evidence_upsert(
         labels.append(f"CompanyEvidence: {e}")
 
     stored = payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
-    return {"ok": True, "stored": stored}
+    return UpsertResponse(ok=True, stored=stored)
 
 @app.get("/company/evidence/{company_id}", response_model=CompanyEvidence)
 def company_evidence_get(
@@ -601,7 +594,7 @@ def company_evidence_get(
     ensure_auth(authorization)
     return CompanyEvidence(company_id=company_id, erp=["SAP"], competitor=["X"], tools=["Y"])
 
-@app.post("/signals/record")
+@app.post("/signals/record", response_model=UpsertResponse)
 def record_signal(
     payload: ManualSignal,
     authorization: Optional[str] = Header(None),
@@ -609,10 +602,10 @@ def record_signal(
     approved_q: Optional[str] = Query(default=None, alias="approved"),
 ):
     ensure_auth(authorization)
-    approval_gate(True, approved approved_hdr or approved_q)      # <- azione mutante => richiede conferma in prod
+    approval_gate(True, approved_hdr or approved_q)      # <- azione mutante => richiede conferma in prod
     
     stored = payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
-    return {"ok": True, "stored": stored}
+    return UpsertResponse(ok=True, stored=stored)
 
 @app.post("/coi/estimate", response_model=COIEstimateResponse)
 def coi_estimate(payload: COIEstimateRequest, authorization: Optional[str] = Header(None)):
@@ -644,16 +637,13 @@ def ab_promote(
     data = payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
     return ABPromoteResponse(ok=True, sequence_id=data["sequence_id"], variant_id=data["variant_id"])
 
-@app.get("/export/sequence/{sequence_id}")
-def export_sequence(
-    sequence_id: str,
-    format: str = "json",
-    authorization: Optional[str] = Header(None),
-):
+@app.get("/export/sequence/{sequence_id}", response_model=ExportSequenceResponse)
+def export_sequence(sequence_id: str, format: str = "json", authorization: Optional[str] = Header(None)):
     ensure_auth(authorization)
     if format == "csv":
-        return {"ok": True, "format": "csv", "sequence_id": sequence_id}
-    return {"ok": True, "format": "json", "sequence_id": sequence_id}
+        return ExportSequenceResponse(ok=True, format="csv", sequence_id=sequence_id)
+    return ExportSequenceResponse(ok=True, format="json", sequence_id=sequence_id)
+
 @app.post("/send/email", response_model=SendEmailResponse)
 def send_email(
     payload: SendEmailRequest,
