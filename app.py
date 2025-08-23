@@ -240,8 +240,8 @@ class ComplianceRequest(BaseModel):
     rules: Dict[str, Any] = Field(default_factory=dict)
 
 class ComplianceResponse(BaseModel):
-    pass_: bool = Field(alias="pass")
-    violations: List[Dict[str, Any]] = []
+    pass_: bool = Field(..., alias="pass")
+    violations: List[Dict[str, Any]] = Field(default_factory=list)
 
 class CalendarBuildRequest(BaseModel):
     start_date: date | None = None
