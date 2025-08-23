@@ -555,7 +555,8 @@ def compliance_validate(
             # se max_words non è castabile, ignora senza crash
             pass
 
-    return ComplianceResponse(pass_=(len(violations) == 0), violations=violations)
+    return ComplianceResponse(**{"pass": len(violations)==0, "violations": violations})
+
 
 def next_workday(d: date) -> date:
     """Rimanda a lunedì se la data cade nel weekend, senza saltare giorni feriali."""
