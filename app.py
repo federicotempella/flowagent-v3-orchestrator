@@ -240,8 +240,11 @@ class ComplianceRequest(BaseModel):
     rules: Dict[str, Any] = Field(default_factory=dict)
 
 class ComplianceResponse(BaseModel):
-    pass_: bool = Field(..., alias="pass")
-    violations: List[Dict[str, Any]] = Field(default_factory=list)
+    pass_: bool = Field(alias="pass")
+    violations: List[dict] = Field(default_factory=list)
+
+    class Config:
+        allow_population_by_field_name = True
 
 class CalendarBuildRequest(BaseModel):
     start_date: date | None = None
@@ -497,38 +500,59 @@ def rank(payload: RankRequest, authorization: Optional[str] = Header(None)):
     ranked = [{"id": it.id, "score": round(0.9 - i*0.07, 3), "reason": f"Coerenza {payload.objective}"} for i,it in enumerate(payload.items)]
     return RankResponse(ranked=ranked)
 
-@app.post("/validate/compliance", response_model=ComplianceResponse, response_model_by_alias=True)
-def compliance(
+@app.post("/validate/compliance", response_model=ComplianceResponse)
+def compliance_validate(
     payload: ComplianceRequest,
     authorization: Optional[str] = Header(None),
 ):
     ensure_auth(authorization)
 
-    rules: Dict[str, Any] = payload.rules or {}
-    text_low = (payload.text or "").lower()
-    violations: List[Dict[str, Any]] = []
+    # Normalizzazioni safe
+    text = payload.text or ""
+    text_low = text.lower()
+    rules = payload.rules or {}
+    if not isinstance(rules, dict):
+        rules = {}
 
-    # 1) CTA richiesta?
-    if rules.get("require_cta", True):
-        if not any(x in text_low for x in ["?", "prenot", "disponibile", "chi"]):
+    # Estrai e pulisci banned_terms
+    raw_banned = rules.get("banned_terms", [])
+    if not isinstance(raw_banned, list):
+        raw_banned = [raw_banned]
+    banned_terms = []
+    for x in raw_banned:
+        try:
+            banned_terms.append(str(x))
+        except Exception:
+            continue
+
+    require_cta = bool(rules.get("require_cta", True))
+    anti_jargon = bool(rules.get("anti_jargon", True))
+    max_words   = rules.get("max_words", None)
+
+    violations = []
+
+    # 1) CTA presente?
+    if require_cta:
+        tokens = ("?", "prenot", "disponibile", "chi")
+        if not any(tok in text_low for tok in tokens):
             violations.append({"code": "CTA_MISSING", "detail": "Manca una call-to-action chiara"})
 
-    # 2) Anti-jargon / termini vietati
-    if rules.get("anti_jargon", True):
-        banned = rules.get("banned_terms") or []
-        if any((bad or "").lower() in text_low for bad in banned):
-            violations.append({"code": "JARGON", "detail": "Termini vietati trovati"})
+    # 2) Anti-jargon
+    if anti_jargon and banned_terms:
+        for bad in banned_terms:
+            if bad.lower() in text_low:
+                violations.append({"code": "JARGON", "detail": f"Termine vietato: {bad}"})
+                break
 
-    # 3) Limite parole opzionale
-    max_words = rules.get("max_words")
-    if max_words:
+    # 3) Lunghezza massima parole
+    if max_words is not None:
         try:
             mw = int(max_words)
-            words = len((payload.text or "").split())
+            words = len(text.split())
             if words > mw:
                 violations.append({"code": "TOO_LONG", "detail": f"Testo {words} parole > max {mw}"})
         except Exception:
-            # se max_words non è numerico, ignoro
+            # se max_words non è castabile, ignora senza crash
             pass
 
     return ComplianceResponse(pass_=(len(violations) == 0), violations=violations)
@@ -613,18 +637,19 @@ def kb_list(
             metadata={"industry":"retail","role":"CIO","tags":["persona"]}
         )
     ])
-
 @app.delete("/kb/doc/{doc_id}", response_model=KBDeleteResponse)
 def kb_delete(
     doc_id: str,
     authorization: Optional[str] = Header(None),
     approved_hdr: Optional[str] = Header(default=None, alias=APPROVAL_HEADER),
-    approved_q: Optional[str] = Query(default=None, alias="approved"),    # <-- NEW
+    approved_q:  Optional[str] = Query(default=None, alias="approved"),
 ):
     ensure_auth(authorization)
-    approval_gate(True, approved_hdr or approved_q)  # ← aggiunto
-    # TODO: delete reale
+    # usa SEMPRE l'OR tra header e query:
+    approval_gate(True, approved_hdr or approved_q)
+
     return KBDeleteResponse(ok=True, deleted_doc_id=doc_id)
+
 
 @app.post("/company/evidence/upsert", response_model=UpsertResponse)
 def company_evidence_upsert(
