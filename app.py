@@ -1,7 +1,7 @@
 import os
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, ConfigDict
 from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime, date, timedelta, timezone
 from fastapi.responses import HTMLResponse
@@ -220,8 +220,6 @@ class GenerateSequenceRequest(BaseModel):
     buyer_persona_ids: Optional[List[str]] = None
     research: Optional[ResearchParams] = None
 
-
-
 class RankItem(BaseModel):
     id: str
     channel: Channel
@@ -243,8 +241,7 @@ class ComplianceResponse(BaseModel):
     pass_: bool = Field(alias="pass")
     violations: List[dict] = Field(default_factory=list)
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 class CalendarBuildRequest(BaseModel):
     start_date: date | None = None
@@ -299,8 +296,7 @@ class SendEmailRequest(BaseModel):
     variant_id: Optional[str] = None
     campaign_id: Optional[str] = None
 
-    class Config:
-     allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 class SendEmailResponse(BaseModel):
     message_id: str
