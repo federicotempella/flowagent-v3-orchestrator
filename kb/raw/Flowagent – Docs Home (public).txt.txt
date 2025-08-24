@@ -1,0 +1,4 @@
+Flowagent – Docs Home (public)
+Canonical docs URL (short): https://bit.ly/flowagent-docs
+Notes: Live Notion docs. Use this link in the app, GPT, emails, and support replies.
+Last updated: YYYY-MM-DD
