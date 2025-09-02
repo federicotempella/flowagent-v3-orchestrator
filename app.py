@@ -100,9 +100,6 @@ except NameError:
 
 # === 3) FASTAPI APP (se non già esistente) ====================================
 
-
-URL_RE = re.compile(r'(https?://[^\s)>\]]+)')
-
 docs_on = os.getenv("DOCS_ENABLED", "true").lower() in ("1","true","yes","on")
 APP_ENV = os.getenv("APP_ENV", "dev").lower()
 
@@ -702,6 +699,16 @@ def kb_index_load() -> list[dict]:
             continue
     # opzionale: altri formati (.md/.txt)…
     return items
+
+def get_kb_items_flat() -> list[dict]:
+    # prova _list_kb_flat se esiste
+    if "_list_kb_flat" in globals() and callable(globals().get("_list_kb_flat")):
+        return _list_kb_flat()
+    # fallback su _kb_items_flat se esiste
+    if "_kb_items_flat" in globals() and callable(globals().get("_kb_items_flat")):
+        return _kb_items_flat()
+    return []
+
 
 def _list_kb_flat() -> List[dict]:
     # Usa i tuoi sidecar .txt come corpus
@@ -1357,21 +1364,14 @@ _ensure_cache_dirs()
 
 
 # ===================== BEGIN PATCH: URL->text cache helper =====================
+# --- KB query cache (unica versione) ---
 CACHE_DIR = Path(os.getenv("CACHE_DIR", ".cache"))
-CACHE_DIR.mkdir(exist_ok=True)
 KB_QCACHE_DIR = CACHE_DIR / "kb_query"
-(Path(".cache/kb_query")).mkdir(parents=True, exist_ok=True)
-_QCACHE = Path(".cache/kb_query/qcache.json")
-for d in (CACHE_DIR, KB_QCACHE_DIR):
-    d.mkdir(parents=True, exist_ok=True)
+KB_QCACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-# TTL della query-cache in secondi (es. 7 giorni)
+_KB_QCACHE_FILE = KB_QCACHE_DIR / "qcache.json"   # nome coerente con le funzioni legacy se le tieni
 KB_QCACHE_TTL = int(os.getenv("KB_QCACHE_TTL", "86400"))  # 24h default
 
-CACHE_DIR = Path(os.getenv("CACHE_DIR", ".cache"))
-CACHE_DIR.mkdir(exist_ok=True)
-(CACHE_DIR / "kb_query").mkdir(parents=True, exist_ok=True)
-_QCACHE = CACHE_DIR / "kb_query" / "qcache.json"
 
 
 URL_TXT_DIR = CACHE_DIR / "url_text"
@@ -1428,28 +1428,6 @@ try:
         _KB_QCACHE_FILE.write_text("{}", encoding="utf-8")
 except Exception:
     pass
-
-def _qcache_get(q: str):
-    try:
-        data = json.loads(_KB_QCACHE_FILE.read_text(encoding="utf-8"))
-        row = data.get(q)
-        if not row: return None
-        if (time.time() - float(row.get("ts", 0))) > KB_QCACHE_TTL:
-            return None
-        return row.get("hits")
-    except Exception:
-        return None
-
-def _qcache_put(q: str, hits: list[dict]):
-    try:
-        data = json.loads(_KB_QCACHE_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        data = {}
-    data[q] = {"ts": time.time(), "hits": hits}
-    try:
-        _KB_QCACHE_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-    except Exception:
-        pass
 
 def _kb_items_flat() -> List[dict]:
     """Corpus KB: usa i sidecar .txt accanto ai file in kb/raw."""
@@ -1878,8 +1856,7 @@ async def build_competitor_matrix(payload: "CompetitorRequest") -> "CompetitorMa
     """
 
     # 0) dedup nomi competitor
-    def _normalize_name(s: str) -> str:
-        return re.sub(r"[^a-z0-9]+", "", (s or "").lower())
+
     uniq, seen = [], set()
     for comp in (payload.competitors or []):
         k = _normalize_name(comp)
@@ -1954,8 +1931,6 @@ async def build_competitor_matrix(payload: "CompetitorRequest") -> "CompetitorMa
         it.score_feature = round(sum(cov.values()) / max(1, len(cov)), 4)
         it.score_total = _compute_item_total_score(it, features=list(normalized_features or []), weights=weights)
 
-    scoring = {"ranking": ranking}
-
     # 9) ritorno matrice (ranking dentro .scoring)
     return CompetitorMatrix(
         company=payload.company,
@@ -1966,7 +1941,13 @@ async def build_competitor_matrix(payload: "CompetitorRequest") -> "CompetitorMa
         feature_coverage=feature_coverage,
         items=items,
         research_summary=research_summary,
-        scoring={"ranking": ranking},
+        scoring={
+            "ranking": ranking,
+            # pesi “macro” esposti per la UI/consumi a valle (come avevi prima)
+            "weights": {"feature": 0.7, "industry_icp": 0.3},
+            # se vuoi anche mostrare i pesi di dettaglio per feature, includi il dict usato su _compute_item_total_score:
+            "feature_weights": weights,  # <- da (payload.meta or {}).get("feature_weights", {})
+        },
     )
 
 def rank_combinations(combos: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -2204,7 +2185,7 @@ def _do_kb_search(query: str, top_k: int = 5) -> list[dict]:
         return cached[:top_k]
 
     # 1) recupera lista KB “flat” (riusa la tua funzione/indice esistente)
-    kb_items = _list_kb_flat()  # implementazione già presente nel file o equivalente
+    kb_items = get_kb_items_flat() # implementazione già presente nel file o equivalente
 
     # 2) calcola due ranking
     ca = _do_kb_search_countbased(query, kb_items, top_k=max(50, top_k))
@@ -3393,7 +3374,9 @@ def generate_sequence(
         calendar=all_calendar,
         labels=labels,
         research=rr_norm,
-        logging=log
+        logging=log,
+        what_i_used=what_i_used,   # <— aggiungi
+        coi=coi
     )
 
     # idempotency store
@@ -3674,7 +3657,6 @@ def kb_personas_index(
         ))
     return PersonaIndexResponse(items=sorted(items, key=lambda x: x.persona_id.lower()))
 
-# === BEGIN PATCH: GET /kb/personas/show ===
 @app.get("/kb/personas/show")
 def kb_persona_show(
     id: str = Query(..., description="persona_id o nome file (senza estensione)"),
@@ -3791,7 +3773,7 @@ def kb_search(
 ):
     ensure_auth(authorization)
     # indicizza KB "flat"
-    items = _list_kb_flat()
+    items = get_kb_items_flat()
 
     # filtri opzionali su title/snippet
     if any([industry, role, lang]):
@@ -3971,7 +3953,7 @@ def competitor_analysis(payload: CompetitorRequest, authorization: Optional[str]
         feature_coverage=feature_coverage,
         items=items,
         research_summary=research_summary,
-        scoring={"weights":{"feature":0.7,"industry_icp":0.3}}
+        scoring={"ranking": ranking}
     )
 # ===================== END PATCH: /competitor/analysis fix =====================
 
