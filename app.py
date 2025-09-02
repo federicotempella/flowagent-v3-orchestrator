@@ -1216,6 +1216,8 @@ def _apply_openers_cta(m: "Message", contact: "Contact", seed: int) -> "Message"
         body = body + "\n\n" + cta
     return m.model_copy(update={"text": body})
 
+import re
+
 def export_sequence_to_docx(messages: List["Message"], title: str = "FlowAgent v3 — Sequenza") -> str:
     if _Docx is None:
         raise HTTPException(501, "python-docx non disponibile")
@@ -1229,7 +1231,8 @@ def export_sequence_to_docx(messages: List["Message"], title: str = "FlowAgent v
         if getattr(m, "tips", None):
             doc.add_paragraph("Tips: " + ", ".join(m.tips))
     out_path = Path("exports"); out_path.mkdir(parents=True, exist_ok=True)
-    file_path = out_path / f"{re.sub(r'[^\\w\\-]+','_',title.lower())}.docx"
+    + safe_title = re.sub(r"[^\w-]+", "_", (title or "untitled").lower())
+    + file_path = out_path / f"{safe_title}.docx"
     bio = io.BytesIO(); doc.save(bio); bio.seek(0); file_path.write_bytes(bio.read())
     return str(file_path)
 
