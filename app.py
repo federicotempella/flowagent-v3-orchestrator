@@ -18,7 +18,8 @@ from fastapi import FastAPI, Query, Header, HTTPException, Request, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse, Response, HTMLResponse
 from starlette.responses import JSONResponse as StarletteJSONResponse, StreamingResponse as StarletteStreamingResponse
-from pydantic import BaseModel, EmailStr, Field, BaseSettings, confloat, conint
+from pydantic import BaseModel, EmailStr, Field, confloat, conint
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -164,15 +165,7 @@ model_config = {  # pydantic v2 (se sei già su v2)
 class Settings(BaseSettings):
     OPENAI_API_KEY: str | None = None
     OPENAI_MODEL: str = "gpt-4o-mini"
-
-    class Config:  # pydantic v1
-        env_file = ".env"
-        case_sensitive = True
-
-    model_config = {  # pydantic v2 (se sei già su v2)
-        "env_file": ".env",
-        "case_sensitive": True,
-    }
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 
 settings = Settings()
 
@@ -531,10 +524,6 @@ class SendEmailRequest(BaseModel):
 class SendEmailResponse(BaseModel):
     ok: bool
     id: Optional[str] = None
-
-class CalendarBuildResponse(BaseModel):
-    ok: bool
-    ics: Optional[str] = None
 
 class ExportDocxRequest(BaseModel):
     title: Optional[str] = None
