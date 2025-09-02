@@ -1041,7 +1041,7 @@ def _guard_ip(input_text: str):
 # dentro i tuoi handler principali (prima di generare):
 # Place this at the start of your endpoint function, before processing the request
 _search_counters = defaultdict(int)
-_search_reset_at = time() + 86400  # reset daily
+_search_reset_at = time.time() + 86400  # reset daily
 
 def _provider():
     return settings.RESEARCH_PROVIDER
