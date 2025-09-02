@@ -1230,11 +1230,19 @@ def export_sequence_to_docx(messages: List["Message"], title: str = "FlowAgent v
         doc.add_paragraph(m.text or "")
         if getattr(m, "tips", None):
             doc.add_paragraph("Tips: " + ", ".join(m.tips))
-    out_path = Path("exports"); out_path.mkdir(parents=True, exist_ok=True)
-    + safe_title = re.sub(r"[^\w-]+", "_", (title or "untitled").lower())
-    + file_path = out_path / f"{safe_title}.docx"
-    bio = io.BytesIO(); doc.save(bio); bio.seek(0); file_path.write_bytes(bio.read())
+
+    out_path = Path("exports")
+    out_path.mkdir(parents=True, exist_ok=True)
+
+    safe_title = re.sub(r"[^\w-]+", "_", (title or "untitled").lower())
+    file_path = out_path / f"{safe_title}.docx"
+
+    bio = io.BytesIO()
+    doc.save(bio)
+    bio.seek(0)
+    file_path.write_bytes(bio.read())
     return str(file_path)
+
 
 def full_gpt_instructions_path() -> str | None:
     path = os.path.join("kb", "istruzioni_gpt_full.pdf")
