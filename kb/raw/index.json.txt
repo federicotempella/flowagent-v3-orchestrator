@@ -1,0 +1,16 @@
+{
+  "istruzioni_gpt_full": {
+    "title": "Istruzioni GPT Full",
+    "lang": "it",
+    "metadata": {},
+    "private": true
+  },
+  "style_guide_outreach_it": {
+    "title": "Style Guide – Outreach IT",
+    "lang": "it",
+    "metadata": {
+      "tags": ["style", "outreach", "IT"]
+    },
+    "private": false
+  }
+}
