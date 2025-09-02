@@ -163,9 +163,49 @@ model_config = {  # pydantic v2 (se sei già su v2)
     }
 
 class Settings(BaseSettings):
+    # --- chiavi openai/app base ---
     OPENAI_API_KEY: str | None = None
     OPENAI_MODEL: str = "gpt-4o-mini"
-    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
+
+    # --- chiavi viste nei tuoi log (tipizzate per parsing automatico) ---
+    BEARER_TOKEN: str | None = None
+    DOCS_ENABLED: bool = False
+    APP_ENV: str = "prod"
+    SELFTEST_MODELS: bool = False
+
+    ALLOW_ORIGINS: str | None = None
+    ALLOW_PER_CONTACT: bool = False
+
+    RAG_BACKEND: str | None = None
+    RAG_INDEX_PATH: str | None = None
+
+    RESEARCH_DOMAINS_WHITELIST: str | None = None
+    RESEARCH_TIME_WINDOW_DAYS: int = 90
+    RESEARCH_PROVIDER: str | None = None
+    RESEARCH_FALLBACKS: str | None = None
+
+    TAVILY_API_KEY: str | None = None
+    SERPER_API_KEY: str | None = None
+    SERPAPI_API_KEY: str | None = None
+    BRAVE_API_KEY: str | None = None
+    SEARXNG_URL: str | None = None
+
+    RESEARCH_BUDGET_DAY: int = 800
+    RESEARCH_BUDGET_SERPER: int = 2000
+    RESEARCH_BUDGET_BRAVE: int = 1000
+    RESEARCH_BUDGET_TAVILY: int = 500
+    RESEARCH_BUDGET_SERPAPI: int = 250
+
+    RESEARCH_ALWAYS_ON: bool = False
+    RESEARCH_DEGRADE_TO: str | None = None
+
+    # Config Pydantic v2: .env + extra consentiti
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+        extra="allow",            # <-- non esplodere su env non mappate
+        populate_by_name=True     # <-- nome chiave v2 (ex allow_population_by_field_name)
+    )
 
 settings = Settings()
 
@@ -1225,6 +1265,7 @@ def export_sequence_to_docx(messages: List["Message"], title: str = "FlowAgent v
 
     safe_title = re.sub(r"[^\w-]+", "_", (title or "untitled").lower())
     file_path = out_path / f"{safe_title}.docx"
+
 
     bio = io.BytesIO()
     doc.save(bio)
