@@ -18,7 +18,7 @@ from fastapi import FastAPI, Query, Header, HTTPException, Request, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse, Response, HTMLResponse
 from starlette.responses import JSONResponse as StarletteJSONResponse, StreamingResponse as StarletteStreamingResponse
-from pydantic import BaseModel, EmailStr, Field, confloat, conint
+from pydantic import ConfigDict, BaseModel, EmailStr, Field, confloat, conint
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -242,6 +242,9 @@ class Message(BaseModel):
     subject: Optional[str] = None
     text: str
     tips: Optional[List[str]] = None
+
+class MyModel(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
 
 class COI(BaseModel):
     status: Literal["none", "estimated", "computed"] = "none"

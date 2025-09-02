@@ -1,0 +1,43 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.sqlite3
+
+# Venv
+venv/
+.env/
+.env.*
+.venv/
+*.egg-info/
+
+# Build/Cache
+build/
+dist/
+.cache/
+.ipynb_checkpoints/
+
+# Node (se presente)
+node_modules/
+*.log
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Git
+.git
+.gitignore
+
+# Big / temp (se NON servono nel container)
+*.pdf
+*.docx
+*.xlsx
+*.csv
+*.parquet
+*.zip*
+*.tar
+*.gz
