@@ -1,28 +1,30 @@
 # syntax=docker/dockerfile:1
 FROM python:3.11-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PIP_NO_CACHE_DIR=1
+ENV CACHE_DIR=/app/.cache
+ENV KB_QCACHE_TTL=86400
+ENV URL_TXT_TTL=2592000
+ENV KB_DOCS_DIR=/app/kb/raw
 
-# Dipendenze minime di sistema (aggiungi qui se ti servono altre lib di OS)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    fonts-dejavu-core \
- && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends
+
+#fonts-dejavu-core
+RUN rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# 1) Copia solo requirements per sfruttare la cache
 COPY requirements.txt ./
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
-# 2) Copia il resto del codice
+#Copia codice
 COPY . .
 
-# 3) Utente non-root (best practice)
-RUN useradd -m appuser
+#crea la cache e assegna permessi all'utente non-root
+RUN mkdir -p "$CACHE_DIR" && useradd -m appuser && chown -R appuser:appuser /app
 USER appuser
 
-# 4) Avvio: Render passa $PORT; in locale default 8080
-#    Uso sh -c per espandere ${PORT:-8080}
+#Avvio (FastAPI con uvicorn)
 CMD ["sh","-c","uvicorn app:app --host 0.0.0.0 --port ${PORT:-8080}"]

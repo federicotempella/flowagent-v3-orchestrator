@@ -17,3 +17,4 @@ python-multipart
 requests
 pydantic>=2.7
 pydantic-settings>=2.0
+reportlab

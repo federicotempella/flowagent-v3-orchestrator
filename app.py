@@ -22,6 +22,8 @@ from pydantic import ConfigDict, BaseModel, EmailStr, Field, confloat, conint
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 
 # OCR / parsing
 try:
@@ -41,6 +43,11 @@ except Exception:
     cv2 = None
     Image = None
 
+pdfmetrics.registerFont(UnicodeCIDFont('HeiseiMin-W3'))  # giapponese
+pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light'))  # cinese
+pdfmetrics.registerFont(UnicodeCIDFont('MSung-Light'))   # cinese tradizionale
+pdfmetrics.registerFont(UnicodeCIDFont('HYSMyeongJo-Medium'))  # coreano
+
 # === INTERNALS ================================================================
 from security import ensure_auth, approval_gate, _guard_ip_from_request, APPROVAL_HEADER
 from research_agent import (
@@ -48,11 +55,11 @@ from research_agent import (
     _effective_research_mode,
     research_extract,
     _extract_urls,
-    kb_search_tfidf,
 )
 
-
-
+import logging
+logging.getLogger("pdfminer").setLevel(logging.ERROR)
+logging.getLogger("pdfminer.layout").setLevel(logging.ERROR)
 
 load_dotenv()
 URL_RE = re.compile(r'(https?://[^\s)>\]]+)')
@@ -154,8 +161,9 @@ class ComplianceResponse(BaseModel):
     passed: bool = Field(alias="pass", default=True)
     violations: List[ComplianceViolation] = Field(default_factory=list)
 
-    class Config:
-        allow_population_by_field_name = True
+    # v1 → v2
+    model_config = ConfigDict(populate_by_name=True)
+
 
 model_config = {  # pydantic v2 (se sei già su v2)
         "env_file": ".env",
@@ -1400,27 +1408,29 @@ def pick_best_combo(triggers: list[str],
 
 # --- Utils comuni (dedup/normalize) ---
 
-def _ensure_cache_dirs():
-    from pathlib import Path
-    (Path(".cache/kb_query")).mkdir(parents=True, exist_ok=True)
-    (Path(".cache/url_text")).mkdir(parents=True, exist_ok=True)
-_ensure_cache_dirs()
+
 
 
 # ===================== BEGIN PATCH: URL->text cache helper =====================
 # --- KB query cache (unica versione) ---
 CACHE_DIR = Path(os.getenv("CACHE_DIR", ".cache"))
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
 KB_QCACHE_DIR = CACHE_DIR / "kb_query"
 KB_QCACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-_KB_QCACHE_FILE = KB_QCACHE_DIR / "qcache.json"   # nome coerente con le funzioni legacy se le tieni
+   # nome coerente con le funzioni legacy se le tieni
 KB_QCACHE_TTL = int(os.getenv("KB_QCACHE_TTL", "86400"))  # 24h default
-
 
 
 URL_TXT_DIR = CACHE_DIR / "url_text"
 URL_TXT_DIR.mkdir(parents=True, exist_ok=True)
 URL_TXT_TTL = int(os.getenv("URL_TXT_TTL", "2592000"))  # 30 giorni
+
+def _ensure_cache_dirs():
+    KB_QCACHE_DIR.mkdir(parents=True, exist_ok=True)
+    URL_TXT_DIR.mkdir(parents=True, exist_ok=True)
+_ensure_cache_dirs()
 
 # app.py
 def _qcache_path(key: dict) -> Path:
@@ -3084,6 +3094,17 @@ for p in KB_RAW.glob("**/*"):
     txt = extract_text_any(p)  # <— usa il nuovo estrattore robusto
     if txt.strip():
         side.write_text(txt, encoding="utf-8")
+
+if os.getenv("KB_AUTOSCAN_ON_START", "false").lower() in ("1","true","yes"):
+    for p in KB_RAW.glob("**/*"):
+        if not p.is_file():
+            continue
+        side = p.with_suffix(".txt")
+        if side.exists():
+            continue
+        txt = extract_text_any(p)
+        if txt.strip():
+            side.write_text(txt, encoding="utf-8")
 
 
 # === 7) VALORI DI DEFAULT “GLOBALI” USATI IN PIÙ PUNTI =========================

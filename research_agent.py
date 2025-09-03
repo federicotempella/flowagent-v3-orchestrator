@@ -17,10 +17,23 @@ def _maybe_guard(provider: str):
     except Exception:
         pass
 
+# === CACHE & PATHS (env-aware, nessun hardcode .cache) ===
+CACHE_DIR     = Path(os.getenv("CACHE_DIR", "/tmp/flowagent-cache"))
+KB_DOCS_DIR   = Path(os.getenv("KB_DOCS_DIR", "kb/raw"))
+
+# TTL configurabili via ENV (fallback sicuri)
+KB_QCACHE_TTL = int(os.getenv("KB_QCACHE_TTL", "86400"))     # 24h
+URL_TXT_TTL   = int(os.getenv("URL_TXT_TTL", "2592000"))     # 30 giorni
+
+# directory di cache
+KB_QCACHE_DIR = CACHE_DIR / "kb_query"
+TEXT_CACHE    = CACHE_DIR / "url_text"
+
+# creazione cartelle
+KB_QCACHE_DIR.mkdir(parents=True, exist_ok=True)
+TEXT_CACHE.mkdir(parents=True, exist_ok=True)
+
 # [research_agent.py] --- costanti/cache (in alto, vicino alle altre) ---
-KB_QCACHE_DIR = Path(".cache/kb_query"); KB_QCACHE_DIR.mkdir(parents=True, exist_ok=True)
-KB_DOCS_DIR   = Path("kb/raw")
-KB_QCACHE_TTL = 86400  # 24h
 
 def _kb_qcache_path(q: str) -> Path:
     h = hashlib.sha1(q.encode("utf-8")).hexdigest()
@@ -240,8 +253,7 @@ def _extract_urls(text: str) -> list[str]:
 _extract_url = _extract_urls
 
 DEFAULT_TIMEOUT = 12
-TEXT_CACHE = Path(".cache/url_text")
-TEXT_CACHE.mkdir(parents=True, exist_ok=True)
+
 
 def _fetch_text_from_url(url: str, timeout: int = DEFAULT_TIMEOUT) -> str:
     try:
@@ -331,13 +343,15 @@ def research_extract(raw_text: str) -> Dict[str, Any]:
         h = hashlib.sha1(u.encode()).hexdigest()
         fp = TEXT_CACHE / f"{h}.txt"
         if fp.exists():
-            fetched.append({"url": u, "path": str(fp)})
-            continue
+            age = time.time() - fp.stat().st_mtime
+            if age <= URL_TXT_TTL:
+                fetched.append({"url": u, "path": str(fp)})
+                continue
+            # scaduto → rimuovi e riscarica
+            try: fp.unlink()
+            except: pass
+
         body = _fetch_text_from_url(u)
-        if body:
-            fp.write_text(body, encoding="utf-8", errors="ignore")
-            fetched.append({"url": u, "path": str(fp)})
-    return {"urls": urls, "fetched": fetched}
 # ============================ PUBLIC API ============================
 # --- API pubblica (usata da app.py) ---
 # ============================ PUBLIC API ============================
