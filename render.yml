@@ -1,5 +1,5 @@
 services:
-  - type: web
+  - type: web 
     name: flowagent-v3-orchestrator
     env: docker
     plan: starter
@@ -92,3 +92,4 @@ services:
       - name: app-data
         mountPath: /var/data
         sizeGB: 2
+
