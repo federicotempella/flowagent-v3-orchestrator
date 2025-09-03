@@ -4372,35 +4372,3 @@ def content_linkedin_creatives(payload: LinkedInCreativesReq,
                                      language=(payload.language or "it"),
                                      coi_enabled=bool(payload.coi_enabled))
     return LinkedInCreativesRes(**ab)
-
-#todo
-if os.getenv("SELFTEST_MODELS","false").lower() in {"1","true","yes"}:
-    # istanziazione minima per verificare serializzazione
-    _ = Message(channel="email", step="step-00", variant="A", subject=None, text="ciao", tips=[])
-    _ = SequenceAction(channel="email", step="step-00", action="send", date=None)
-    _ = CalendarEvent(date=str(date.today()), action="send", channel="email", step="step-00")
-    _ = ResearchOptions()
-    _ = GenerateSequenceRequest(threads=[], contacts=[], buyer_persona_ids=[])
-    _ = RankRequest(candidates=[{"id":"x"}]); _ = RankResponse(items=[RankItem(id="x", score=0.9, payload={})])
-    _ = CalendarBuildResponse(calendar=[], ics=None)
-    _ = COIEstimateRequest(signals=[ManualSignal(name="x", value=1)], horizon_days=30)
-    _ = COIEstimateResponse(status="ok", estimate=123.4, notes=["ok"])
-    _ = KBSearchMatch(file="a.txt", score=0.7); _ = KBListItem(file="a.txt", kind="txt", size=10)
-    _ = UpsertResponse(ok=True, id="1")
-    _ = CompetitorRequest(company="ACME", competitors=["Foo","Bar"])
-
-#todo
-#todo---------@app.get("/_health/models")
-#---------def _health_models():
-    # istanze minime
-#_ = ComplianceResponse(True, violations=[])
-#_ = CalendarBuildRequest(start_date=date.today(), base_sequence=[])
-# _ = CalendarBuildResponse(calendar=[], ics="BEGIN:VCALENDAR\nEND:VCALENDAR")
-# _ = KBSearchResponse(query="test", matches=[KBSearchMatch(file="a.docx", score=0.8, snippet="...")])
-#   _ = UpsertResponse(ok=True, id="123", stored={"x":1})
-#    _ = ExportSequenceResponse(ok=True, format="json", sequence_id="abc")
-#   _ = CompetitorRequest(company="ACME", competitors=["X","Y"], research=ResearchOptions())
-#    _ = ResearchResult(facts=[EnrichedFact(text="ok")], citations=[])
-#    _ = StandardOutput(messages=[], coi=COI(), sequence_next=[], calendar=[])
-#    return {"ok": True}
-
