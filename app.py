@@ -1406,11 +1406,6 @@ def pick_best_combo(triggers: list[str],
     }
 # ===================== END PATCH: pick_best_combo =====================
 
-# --- Utils comuni (dedup/normalize) ---
-
-
-
-
 # ===================== BEGIN PATCH: URL->text cache helper =====================
 # --- KB query cache (unica versione) ---
 CACHE_DIR = Path(os.getenv("CACHE_DIR", ".cache"))
@@ -1419,7 +1414,7 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 KB_QCACHE_DIR = CACHE_DIR / "kb_query"
 KB_QCACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-   # nome coerente con le funzioni legacy se le tieni
+# nome coerente con le funzioni legacy se le tieni
 KB_QCACHE_TTL = int(os.getenv("KB_QCACHE_TTL", "86400"))  # 24h default
 
 
