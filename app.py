@@ -4373,10 +4373,11 @@ def content_linkedin_creatives(payload: LinkedInCreativesReq,
                                      coi_enabled=bool(payload.coi_enabled))
     return LinkedInCreativesRes(**ab)
 
+#todo
 if os.getenv("SELFTEST_MODELS","false").lower() in {"1","true","yes"}:
     # istanziazione minima per verificare serializzazione
     _ = Message(channel="email", step="step-00", variant="A", subject=None, text="ciao", tips=[])
-    _ = SequenceAction(channel="email", step="step-00", action="send", date=date.today())
+    _ = SequenceAction(channel="email", step="step-00", action="send", date=None)
     _ = CalendarEvent(date=str(date.today()), action="send", channel="email", step="step-00")
     _ = ResearchOptions()
     _ = GenerateSequenceRequest(threads=[], contacts=[], buyer_persona_ids=[])
