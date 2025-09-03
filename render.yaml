@@ -90,6 +90,6 @@ services:
         value: "/var/data/kb/index"
 
     disk:
-      - name: app-data
-        mountPath: /var/data
-        sizeGB: 2
+      name: app-data
+      mountPath: /var/data
+      sizeGB: 2
