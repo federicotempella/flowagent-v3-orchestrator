@@ -1,47 +1,49 @@
-﻿# Python
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-*.sqlite3
+﻿# Escludi file e cartelle non necessari nell'immagine Docker
 
-# Venv
-venv/
-.env/
-.env.*
-.venv/
-*.egg-info/
-
-# Build/Cache
-build/
-dist/
-.cache/
-.ipynb_checkpoints/
-
-# Node (se presente)
-node_modules/
-*.log
-
-# OS / IDE
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
-
-# Git
+# VCS
 .git
 .gitignore
 
-# Big / temp (se NON servono nel container)
-*.pdf
-*.docx
-*.xlsx
-*.csv
-*.parquet
-*.zip*
-*.tar
-*.gz
+# Python cache e compilati
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
 
-# YAML
+# Virtualenv / venv locali
+venv/
+.env
+*.env
+.env.*
+
+# Output temporanei
+*.db
+*.sqlite3
+*.log
+*.csv
+*.xlsx
+*.docx
+*.pdf
+*.rtf
+*.tmp
+*.swp
+
+# Editor/IDE
+.vscode/
+.idea/
+
+# Node/JS (se presenti)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Build/Cache
+dist/
+build/
+.cache/
+
+# File di configurazione CI/CD o IaC che non servono in immagine
 render.yaml
 render.yml
+docker-compose.yml
