@@ -1,0 +1,95 @@
+services:
+  - type: web
+    name: flowagent-v3-orchestrator
+    env: docker
+    plan: starter
+    autoDeploy: true
+    healthCheckPath: /
+    # Se il Dockerfile è in root e si chiama "Dockerfile", non serve dockerfilePath
+    # dockerfilePath: ./Dockerfile
+
+    envVars:
+      # --- Core runtime ---
+      - key: APP_ENV
+        value: "prod"
+      - key: DOCS_ENABLED
+        value: "true"
+      - key: ALLOW_ORIGINS
+        value: "https://chat.openai.com,https://chatgpt.com,https://flowagent-v3-orchestrator.onrender.com"
+
+      # --- Auth/Security (impostale da dashboard) ---
+      - key: BEARER_TOKEN
+        sync: false
+      - key: WEBHOOK_SECRET
+        sync: false
+
+      # --- LLM ---
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: "gpt-4o-mini"
+      - key: LLM_SUMMARY_ENABLED
+        value: "false"   # metti "true" se vuoi i riassunti scritti dal modello
+      - key: LLM_POLISH_ENABLED
+        value: "true"
+      - key: COI_ENABLED
+        value: "true"
+
+      # --- Ricerca / RAG ---
+      - key: RESEARCH_PROVIDER
+        value: "router"
+      - key: RESEARCH_FALLBACKS
+        value: "brave,tavily,serper,serpapi,searxng"
+      - key: RESEARCH_ALWAYS_ON
+        value: "true"
+      - key: RESEARCH_DEGRADE_TO
+        value: "kb_only"
+      - key: RESEARCH_DOMAINS_WHITELIST
+        value: "newsroom.,press.,careers.,blog.,.gov"
+      - key: RESEARCH_TIME_WINDOW_DAYS
+        value: "90"
+
+      # Provider keys (opzionali; mettile solo se le usi)
+      - key: BRAVE_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: SERPER_API_KEY
+        sync: false
+      - key: SERPAPI_API_KEY
+        sync: false
+      - key: SEARXNG_URL
+        value: ""
+
+      # --- Persistenza: tutto su /var/data (serve il Disk qui sotto) ---
+      - key: CACHE_DIR
+        value: "/var/data/cache"
+      - key: KB_DOCS_DIR
+        value: "/var/data/kb/raw"
+      - key: KB_QCACHE_TTL
+        value: "86400"
+      - key: URL_TXT_TTL
+        value: "2592000"
+
+      # Idempotency (opzionale)
+      - key: IDEMPOTENCY_DIR
+        value: "/var/data/idempotency"
+      - key: IDEMPOTENCY_TTL_SECONDS
+        value: "86400"
+
+      # Personas (opzionali)
+      - key: PERSONA_DIR
+        value: "/var/data/kb/personas"
+      - key: PERSONA_INDEX_JSON
+        value: "/var/data/kb/persona_index.json"
+
+      # RAG locale (se/ quando lo userai)
+      - key: RAG_BACKEND
+        value: "faiss"
+      - key: RAG_INDEX_PATH
+        value: "/var/data/kb/index"
+
+    disks:
+      - name: app-data
+        mountPath: /var/data
+        sizeGB: 2
