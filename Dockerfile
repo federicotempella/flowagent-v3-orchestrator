@@ -1,30 +1,29 @@
-# syntax=docker/dockerfile:1
+# Usa una base Python leggera
 FROM python:3.11-slim
 
+# Evita bytecode e forza stdout/err unbuffered
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV PIP_NO_CACHE_DIR=1
-ENV CACHE_DIR=/app/.cache
-ENV KB_QCACHE_TTL=86400
-ENV URL_TXT_TTL=2592000
-ENV KB_DOCS_DIR=/app/kb/raw
 
-RUN apt-get update && apt-get install -y --no-install-recommends
-
-#fonts-dejavu-core
-RUN rm -rf /var/lib/apt/lists/*
-
+# Setta la working directory
 WORKDIR /app
 
-COPY requirements.txt ./
-RUN pip install --upgrade pip && pip install -r requirements.txt
+# Installa dipendenze di sistema utili (es: build tools, libxml)
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-#Copia codice
+# Copia i requirements e installa le dipendenze Python
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copia tutto il codice dentro il container
 COPY . .
 
-#crea la cache e assegna permessi all'utente non-root
-RUN mkdir -p "$CACHE_DIR" && useradd -m appuser && chown -R appuser:appuser /app
-USER appuser
+# (Opzionale) esponi la porta 8080 solo a scopo documentativo
+EXPOSE 8080
 
-#Avvio (FastAPI con uvicorn)
-CMD ["sh","-c","uvicorn app:app --host 0.0.0.0 --port ${PORT:-8080}"]
+# Comando di avvio: Uvicorn su host 0.0.0.0 e porta fornita da Render
+CMD ["sh", "-c", "uvicorn app:app --host 0.0.0.0 --port ${PORT:-8080}"]
+
