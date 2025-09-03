@@ -41,3 +41,7 @@ Thumbs.db
 *.zip*
 *.tar
 *.gz
+
+# YAML
+render.yaml
+render.yml
