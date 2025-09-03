@@ -89,7 +89,7 @@ services:
       - key: RAG_INDEX_PATH
         value: "/var/data/kb/index"
 
-    disks:
+    disk:
       - name: app-data
         mountPath: /var/data
         sizeGB: 2
