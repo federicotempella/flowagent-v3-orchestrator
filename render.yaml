@@ -29,7 +29,7 @@ services:
       - key: OPENAI_MODEL
         value: "gpt-4o-mini"
       - key: LLM_SUMMARY_ENABLED
-        value: "false"   # metti "true" se vuoi i riassunti scritti dal modello
+        value: "false" # metti "true" se vuoi i riassunti scritti dal modello
       - key: LLM_POLISH_ENABLED
         value: "true"
       - key: COI_ENABLED
