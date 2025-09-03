@@ -27,4 +27,4 @@ RUN mkdir -p "$CACHE_DIR" && useradd -m appuser && chown -R appuser:appuser /app
 USER appuser
 
 #Avvio (FastAPI con uvicorn)
-CMD ["sh","-c","uvicorn app:app --host 0.0.0.0 --port ${PORT:-8080}"]
+CMD ["sh","-c","uvicorn app:app --host 0.0.0.0 --port $PORT:-8080}"]
